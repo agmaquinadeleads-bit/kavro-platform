@@ -10,7 +10,6 @@ type FacebookSdk = { init(options: Record<string, unknown>): void; login(callbac
 declare global { interface Window { FB?: FacebookSdk; fbAsyncInit?: () => void } }
 
 export function MetaEmbeddedSignup() {
-  const [ready, setReady] = useState(false);
   const [state, setState] = useState<"idle" | "connecting" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const signup = useRef<SignupData | null>(null);
@@ -28,17 +27,41 @@ export function MetaEmbeddedSignup() {
       }
     };
     window.addEventListener("message", receive);
-    if (!appId || !configId) return () => window.removeEventListener("message", receive);
-    window.fbAsyncInit = () => { window.FB?.init({ appId, cookie: true, xfbml: false, version: "v23.0" }); setReady(true); };
-    if (window.FB) window.fbAsyncInit();
-    else { const script = document.createElement("script"); script.id = "facebook-jssdk"; script.async = true; script.defer = true; script.crossOrigin = "anonymous"; script.src = "https://connect.facebook.net/pt_BR/sdk.js"; document.body.appendChild(script); }
     return () => window.removeEventListener("message", receive);
-  }, [appId, configId]);
+  }, []);
 
-  const connect = () => {
-    if (!window.FB || !configId) return;
+  const loadSdk = () => new Promise<FacebookSdk>((resolve, reject) => {
+    if (!appId) { reject(new Error("App ID ausente")); return; }
+    const initialize = () => {
+      if (!window.FB) return false;
+      window.FB.init({ appId, cookie: true, xfbml: false, version: "v23.0" });
+      resolve(window.FB);
+      return true;
+    };
+    if (initialize()) return;
+    window.fbAsyncInit = () => { initialize(); };
+    let script = document.getElementById("facebook-jssdk") as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement("script");
+      script.id = "facebook-jssdk";
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = "anonymous";
+      script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+      document.body.appendChild(script);
+    }
+    script.addEventListener("load", () => { initialize(); }, { once: true });
+    script.addEventListener("error", () => reject(new Error("SDK bloqueado")), { once: true });
+    window.setTimeout(() => { if (!window.FB) reject(new Error("Tempo esgotado")); }, 12000);
+  });
+
+  const connect = async () => {
+    if (!appId || !configId) { setState("error"); setMessage("A configuração pública da Meta não foi encontrada neste ambiente."); return; }
     signup.current = null; setState("connecting"); setMessage("Conclua as etapas na janela segura da Meta.");
-    window.FB.login(async (response) => {
+    let facebook: FacebookSdk;
+    try { facebook = await loadSdk(); }
+    catch { setState("error"); setMessage("O navegador bloqueou a conexão com a Meta. Libere pop-ups e tente novamente."); return; }
+    facebook.login(async (response) => {
       const code = response.authResponse?.code;
       const selected = signup.current;
       if (!code || !selected) { setState("error"); setMessage("A conexão não foi concluída. Tente novamente."); return; }
@@ -55,5 +78,5 @@ export function MetaEmbeddedSignup() {
     }, { config_id: configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
   };
 
-  return <><button type="button" onClick={connect} disabled={!ready || state === "connecting"}>{state === "connecting" ? "Conectando..." : "Continuar com a Meta"}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
+  return <><button type="button" onClick={connect} disabled={state === "connecting"}>{state === "connecting" ? "Conectando..." : "Continuar com a Meta"}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
 }
