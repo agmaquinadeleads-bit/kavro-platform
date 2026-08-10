@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const requestedNext = url.searchParams.get("next");
-  const next = requestedNext === "/app" || requestedNext === "/app/team" || requestedNext === "/onboarding" || /^\/invite\/[a-f0-9]{64}$/.test(requestedNext ?? "") ? requestedNext! : "/app";
+  const next = requestedNext === "/app" || requestedNext === "/app/team" || requestedNext === "/onboarding" || requestedNext === "/update-password" || /^\/invite\/[a-f0-9]{64}$/.test(requestedNext ?? "") ? requestedNext! : "/app";
 
   if (code) {
     const supabase = await createClient();
