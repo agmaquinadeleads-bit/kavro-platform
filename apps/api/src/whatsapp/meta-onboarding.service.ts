@@ -18,6 +18,9 @@ export class MetaOnboardingService {
     const appSecret = process.env.META_APP_SECRET;
     const graphVersion = process.env.META_GRAPH_API_VERSION ?? "v25.0";
     if (!appId || !appSecret) throw new ServiceUnavailableException("Cadastro da Meta não configurado");
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!baseUrl || !serviceKey) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
 
     const tokenResponse = await fetch(`https://graph.facebook.com/${graphVersion}/oauth/access_token`, {
       method: "POST",
@@ -52,9 +55,6 @@ export class MetaOnboardingService {
     );
     if (!subscriptionResponse.ok) throw new BadGatewayException("Não foi possível ativar os eventos do WhatsApp");
 
-    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!baseUrl || !serviceKey) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
     const stored = await fetch(`${baseUrl}/rest/v1/rpc/complete_meta_whatsapp_connection`, {
       method: "POST",
       headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}`, "content-type": "application/json" },
