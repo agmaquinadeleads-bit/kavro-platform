@@ -88,7 +88,13 @@ export function MetaEmbeddedSignup() {
         setState("success"); setMessage("WhatsApp conectado com sucesso. Atualizando...");
         window.setTimeout(() => window.location.assign("/app/whatsapp/settings"), 900);
       } catch { setState("error"); setMessage("Não foi possível confirmar a conexão. Tente novamente."); }
-    }, { config_id: configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
+    }, {
+      config_id: configId,
+      auth_type: "rerequest",
+      response_type: "code",
+      override_default_response_type: true,
+      extras: { sessionInfoVersion: 3, setup: {} },
+    });
   };
 
   return <><button className="meta-connect-button" type="button" onClick={connect} disabled={!ready || state === "connecting"}>{state === "connecting" ? "Conectando..." : ready ? "Continuar com a Meta" : "Preparando conexão..."}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
