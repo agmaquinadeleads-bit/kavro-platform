@@ -69,3 +69,59 @@ export type WhatsappConnectionStatus = z.infer<typeof whatsappConnectionStatusSc
 export type WhatsappProvider = z.infer<typeof whatsappProviderSchema>;
 export type SendWhatsappText = z.infer<typeof sendWhatsappTextSchema>;
 export type SendWhatsappMedia = z.infer<typeof sendWhatsappMediaSchema>;
+
+export const attributionChannelSchema = z.enum(["form", "whatsapp", "landing_page", "manual", "import", "api"]);
+export const attributionProviderSchema = z.enum(["meta", "google", "direct", "referral", "other"]);
+
+const optionalTrackingValue = z.string().trim().max(500).optional();
+
+export const metaWhatsappReferralSchema = z.object({
+  ctwaClid: z.string().trim().max(1000).optional(),
+  sourceId: z.string().trim().max(160).optional(),
+  sourceType: z.string().trim().max(80).optional(),
+  headline: z.string().trim().max(500).optional(),
+  body: z.string().trim().max(2000).optional(),
+  mediaType: z.string().trim().max(80).optional()
+}).strict();
+
+export const attributionTouchInputSchema = z.object({
+  leadId: z.string().uuid(),
+  channel: attributionChannelSchema,
+  provider: attributionProviderSchema.default("other"),
+  occurredAt: z.string().datetime().optional(),
+  source: z.string().trim().max(200).optional(),
+  medium: z.string().trim().max(200).optional(),
+  campaignName: optionalTrackingValue,
+  campaignId: z.string().trim().max(160).optional(),
+  adsetName: optionalTrackingValue,
+  adsetId: z.string().trim().max(160).optional(),
+  adName: optionalTrackingValue,
+  adId: z.string().trim().max(160).optional(),
+  utmSource: optionalTrackingValue,
+  utmMedium: optionalTrackingValue,
+  utmCampaign: optionalTrackingValue,
+  utmContent: optionalTrackingValue,
+  utmTerm: optionalTrackingValue,
+  fbclid: optionalTrackingValue,
+  fbc: optionalTrackingValue,
+  fbp: optionalTrackingValue,
+  ctwaClid: z.string().trim().max(1000).optional(),
+  gclid: optionalTrackingValue,
+  gbraid: optionalTrackingValue,
+  wbraid: optionalTrackingValue,
+  landingPath: z.string().trim().max(2048).optional(),
+  referrerOrigin: z.string().trim().max(255).optional(),
+  formId: z.string().trim().max(160).optional(),
+  metaReferral: metaWhatsappReferralSchema.optional(),
+  deduplicationKey: z.string().trim().min(16).max(160).optional()
+}).strict();
+
+export const conversionEventNameSchema = z.enum(["Lead", "QualifiedLead", "Purchase"]);
+export const conversionActionSourceSchema = z.enum(["website", "business_messaging", "offline"]);
+
+export type AttributionChannel = z.infer<typeof attributionChannelSchema>;
+export type AttributionProvider = z.infer<typeof attributionProviderSchema>;
+export type AttributionTouchInput = z.infer<typeof attributionTouchInputSchema>;
+export type MetaWhatsappReferral = z.infer<typeof metaWhatsappReferralSchema>;
+export type ConversionEventName = z.infer<typeof conversionEventNameSchema>;
+export type ConversionActionSource = z.infer<typeof conversionActionSourceSchema>;
