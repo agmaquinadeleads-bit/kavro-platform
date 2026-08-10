@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type SignupData = {
@@ -8,19 +8,18 @@ type SignupData = {
   businessAccountId: string;
 };
 
-type PopupCompleteMessage = SignupData & {
-  type: "KAVRO_META_SIGNUP_COMPLETE";
-  nonce: string;
-  code: string;
+type FacebookLoginResponse = {
+  authResponse?: { code?: string };
+  status?: string;
 };
 
-type PopupErrorMessage = {
-  type: "KAVRO_META_SIGNUP_ERROR";
-  nonce: string;
-  message?: string;
+type FacebookSdk = {
+  init(options: Record<string, unknown>): void;
+  login(
+    callback: (response: FacebookLoginResponse) => void,
+    options: Record<string, unknown>
+  ): void;
 };
-
-type PopupMessage = PopupCompleteMessage | PopupErrorMessage;
 
 type Readiness = {
   canManage?: boolean;
@@ -31,14 +30,65 @@ type Readiness = {
   };
 };
 
-function createNonce() {
-  return window.crypto.randomUUID();
+declare global {
+  interface Window {
+    FB?: FacebookSdk;
+    fbAsyncInit?: () => void;
+  }
 }
 
-function isPopupMessage(value: unknown): value is PopupMessage {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<PopupMessage>;
-  return candidate.type === "KAVRO_META_SIGNUP_COMPLETE" || candidate.type === "KAVRO_META_SIGNUP_ERROR";
+function parseSignupPayload(value: unknown): SignupData | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as {
+    event?: string;
+    data?: {
+      phone_number_id?: string;
+      waba_id?: string;
+    };
+  };
+  if (payload.event !== "FINISH" || !payload.data?.phone_number_id || !payload.data?.waba_id) return null;
+  return {
+    phoneNumberId: payload.data.phone_number_id,
+    businessAccountId: payload.data.waba_id
+  };
+}
+
+function loadFacebookSdk(appId: string) {
+  return new Promise<FacebookSdk>((resolve, reject) => {
+    if (window.FB) {
+      window.FB.init({ appId, cookie: true, xfbml: false, version: "v25.0" });
+      resolve(window.FB);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => reject(new Error("A Meta demorou para carregar. Atualize a página e tente novamente.")), 15000);
+    const finish = () => {
+      if (!window.FB) return;
+      window.clearTimeout(timeout);
+      window.FB.init({ appId, cookie: true, xfbml: false, version: "v25.0" });
+      resolve(window.FB);
+    };
+
+    window.fbAsyncInit = finish;
+    const existing = document.getElementById("facebook-jssdk");
+    if (existing) {
+      existing.addEventListener("load", finish, { once: true });
+      existing.addEventListener("error", () => reject(new Error("Não foi possível carregar a conexão oficial da Meta.")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "facebook-jssdk";
+    script.async = true;
+    script.defer = true;
+    script.crossOrigin = "anonymous";
+    script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error("Não foi possível carregar a conexão oficial da Meta."));
+    };
+    document.head.appendChild(script);
+  });
 }
 
 async function readErrorMessage(response: Response) {
@@ -64,23 +114,33 @@ export function MetaEmbeddedSignup() {
   const appId = process.env.NEXT_PUBLIC_META_APP_ID;
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
   const publicConfigured = Boolean(appId && configId);
+  const [sdk, setSdk] = useState<FacebookSdk | null>(null);
   const [serverReady, setServerReady] = useState(false);
   const [state, setState] = useState<"checking" | "idle" | "connecting" | "success" | "error">("checking");
   const [message, setMessage] = useState("Verificando a conexão oficial da Meta...");
-  const popupRef = useRef<Window | null>(null);
-  const nonceRef = useRef("");
+  const codeRef = useRef("");
+  const signupRef = useRef<SignupData | null>(null);
   const finalizingRef = useRef(false);
+  const attemptTimeoutRef = useRef<number | null>(null);
+
+  const clearAttemptTimeout = useCallback(() => {
+    if (attemptTimeoutRef.current !== null) {
+      window.clearTimeout(attemptTimeoutRef.current);
+      attemptTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
-    const check = async () => {
-      if (!publicConfigured) {
+    const prepare = async () => {
+      if (!appId || !configId) {
         setState("error");
         setMessage("A configuração pública da Meta não foi encontrada neste ambiente.");
         return;
       }
 
       try {
+        const sdkPromise = loadFacebookSdk(appId);
         const supabase = createClient();
         const { data } = await supabase.auth.getSession();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -92,140 +152,142 @@ export function MetaEmbeddedSignup() {
         if (!response.ok) throw new Error(await readErrorMessage(response));
         const readiness = await response.json() as Readiness;
         const problem = describeReadiness(readiness);
+        if (problem) throw new Error(problem);
+        const loadedSdk = await sdkPromise;
         if (!active) return;
-        if (problem) {
-          setState("error");
-          setMessage(problem);
-          return;
-        }
+        setSdk(loadedSdk);
         setServerReady(true);
         setState("idle");
-        setMessage("Tudo pronto. A conexão será feita em uma janela segura do Kavro e da Meta.");
+        setMessage("Tudo pronto. Clique para abrir diretamente a janela oficial da Meta.");
       } catch (error) {
         if (!active) return;
         setState("error");
         setMessage(error instanceof Error ? error.message : "Não foi possível verificar a configuração oficial.");
       }
     };
-    void check();
+    void prepare();
     return () => { active = false; };
-  }, [publicConfigured]);
+  }, [appId, configId]);
+
+  const finishWhenComplete = useCallback(async () => {
+    if (finalizingRef.current || !codeRef.current || !signupRef.current) return;
+    finalizingRef.current = true;
+    clearAttemptTimeout();
+    setState("connecting");
+    setMessage("Autorização recebida. Confirmando o número com segurança...");
+
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+      if (!data.session?.access_token || !apiUrl) throw new Error("A sessão do Kavro ou o endereço da API está ausente.");
+
+      const response = await fetch(`${apiUrl}/v1/whatsapp/meta/onboarding`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${data.session.access_token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          code: codeRef.current,
+          phoneNumberId: signupRef.current.phoneNumberId,
+          businessAccountId: signupRef.current.businessAccountId
+        })
+      });
+
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setState("success");
+      setMessage("WhatsApp conectado com sucesso. Atualizando...");
+      window.setTimeout(() => window.location.assign("/app/whatsapp/settings"), 900);
+    } catch (error) {
+      finalizingRef.current = false;
+      setState("error");
+      setMessage(error instanceof Error ? error.message : "Não foi possível confirmar a conexão. Tente novamente.");
+    }
+  }, [clearAttemptTimeout]);
 
   useEffect(() => {
-    const receive = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== popupRef.current || !isPopupMessage(event.data)) return;
-      if (event.data.nonce !== nonceRef.current) return;
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
+      let payload: unknown = event.data;
+      if (typeof payload === "string") {
+        try { payload = JSON.parse(payload); } catch { return; }
+      }
+      if (!payload || typeof payload !== "object") return;
+      const envelope = payload as { type?: string; event?: string };
+      if (envelope.type !== "WA_EMBEDDED_SIGNUP") return;
 
-      if (event.data.type === "KAVRO_META_SIGNUP_ERROR") {
-        finalizingRef.current = false;
+      if (envelope.event === "CANCEL" || envelope.event === "ERROR") {
+        clearAttemptTimeout();
         setState("error");
-        setMessage(event.data.message || "A conexão foi cancelada ou não pôde ser concluída.");
+        setMessage(envelope.event === "CANCEL" ? "A conexão foi cancelada. Você pode tentar novamente." : "A Meta não concluiu a conexão. Tente novamente.");
         return;
       }
 
-      if (finalizingRef.current) return;
-      finalizingRef.current = true;
-      popupRef.current?.postMessage({ type: "KAVRO_META_SIGNUP_ACK", nonce: nonceRef.current }, window.location.origin);
-      setState("connecting");
-      setMessage("Autorização recebida. Confirmando o número com segurança...");
-
-      try {
-        const supabase = createClient();
-        const { data } = await supabase.auth.getSession();
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
-        if (!data.session?.access_token || !apiUrl) throw new Error("A sessão do Kavro ou o endereço da API está ausente.");
-
-        const response = await fetch(`${apiUrl}/v1/whatsapp/meta/onboarding`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${data.session.access_token}`,
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({
-            code: event.data.code,
-            phoneNumberId: event.data.phoneNumberId,
-            businessAccountId: event.data.businessAccountId
-          })
-        });
-
-        if (!response.ok) throw new Error(await readErrorMessage(response));
-        popupRef.current?.close();
-        popupRef.current = null;
-        setState("success");
-        setMessage("WhatsApp conectado com sucesso. Atualizando...");
-        window.setTimeout(() => window.location.assign("/app/whatsapp/settings"), 900);
-      } catch (error) {
-        popupRef.current?.close();
-        popupRef.current = null;
-        finalizingRef.current = false;
-        setState("error");
-        setMessage(error instanceof Error ? error.message : "Não foi possível confirmar a conexão. Tente novamente.");
-      }
+      const signup = parseSignupPayload(payload);
+      if (!signup) return;
+      signupRef.current = signup;
+      void finishWhenComplete();
     };
 
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, []);
+  }, [clearAttemptTimeout, finishWhenComplete]);
 
-  useEffect(() => {
-    if (state !== "connecting" || !popupRef.current) return;
-    const startedAt = Date.now();
-    const interval = window.setInterval(() => {
-      const popup = popupRef.current;
-      if (popup?.closed && !finalizingRef.current) {
-        popupRef.current = null;
-        window.clearInterval(interval);
-        setState("error");
-        setMessage("A janela de conexão foi fechada antes da conclusão. Tente novamente.");
-      } else if (Date.now() - startedAt > 5 * 60 * 1000) {
-        popup?.close();
-        popupRef.current = null;
-        window.clearInterval(interval);
-        setState("error");
-        setMessage("O tempo da autorização terminou. Tente novamente.");
-      }
-    }, 500);
-    return () => window.clearInterval(interval);
-  }, [state]);
+  useEffect(() => () => clearAttemptTimeout(), [clearAttemptTimeout]);
 
   const connect = () => {
-    if (!publicConfigured || !serverReady) {
+    if (!publicConfigured || !serverReady || !sdk || !configId) {
       setState("error");
       setMessage("A conexão oficial ainda não está completamente configurada neste ambiente.");
       return;
     }
 
+    clearAttemptTimeout();
+    codeRef.current = "";
+    signupRef.current = null;
     finalizingRef.current = false;
-    nonceRef.current = createNonce();
-    const width = 620;
-    const height = 760;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-
-    // Abrimos primeiro uma janela vazia, dentro do gesto do clique. Depois apontamos
-    // para a rota do Kavro. Esse formato é o mais resistente a bloqueadores de pop-up.
-    const popup = window.open(
-      "about:blank",
-      `kavro_meta_auth_${nonceRef.current}`,
-      `popup=yes,width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=yes`
-    );
-
-    if (!popup) {
-      setState("error");
-      setMessage("O navegador bloqueou a janela de conexão. Libere pop-ups para este site e tente novamente.");
-      return;
-    }
-
-    popupRef.current = popup;
-    const authUrl = new URL("/meta/auth", window.location.origin);
-    authUrl.searchParams.set("nonce", nonceRef.current);
-    popup.location.replace(authUrl.toString());
-    popup.focus();
     setState("connecting");
-    setMessage("A janela segura do Kavro foi aberta. Continue nela para entrar com a Meta.");
+    setMessage("A janela oficial da Meta foi aberta. Conclua as etapas nela.");
+    attemptTimeoutRef.current = window.setTimeout(() => {
+      if (finalizingRef.current) return;
+      setState("error");
+      setMessage("A Meta não concluiu a autorização. Feche qualquer janela aberta e tente novamente.");
+    }, 5 * 60 * 1000);
+
+    try {
+      // A chamada precisa ocorrer diretamente dentro do clique. Assim o navegador
+      // reconhece o gesto do usuário e não bloqueia o pop-up oficial da Meta.
+      sdk.login((response) => {
+        const code = response.authResponse?.code;
+        if (!code) {
+          clearAttemptTimeout();
+          setState("error");
+          setMessage("A Meta não devolveu a autorização. Se você cancelou, tente novamente.");
+          return;
+        }
+        codeRef.current = code;
+        void finishWhenComplete();
+      }, {
+        config_id: configId,
+        response_type: "code",
+        override_default_response_type: true,
+        display: "popup",
+        extras: {
+          setup: {},
+          featureType: "whatsapp_business_app_onboarding",
+          features: [{ name: "marketing_messages_lite" }],
+          sessionInfoVersion: "3"
+        }
+      });
+    } catch (error) {
+      clearAttemptTimeout();
+      setState("error");
+      setMessage(error instanceof Error ? error.message : "Não foi possível abrir a janela oficial da Meta.");
+    }
   };
 
-  const disabled = !publicConfigured || !serverReady || state === "checking" || state === "connecting" || state === "success";
+  const disabled = !publicConfigured || !serverReady || !sdk || state === "checking" || state === "connecting" || state === "success";
   const label = state === "checking"
     ? "Verificando configuração..."
     : state === "connecting"
