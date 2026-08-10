@@ -6,7 +6,8 @@ import { AppModule } from "./modules/app.module";
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true })
+    new FastifyAdapter({ logger: true }),
+    { rawBody: true }
   );
 
   app.enableShutdownHooks();
@@ -15,4 +16,3 @@ async function bootstrap() {
 }
 
 void bootstrap();
-
