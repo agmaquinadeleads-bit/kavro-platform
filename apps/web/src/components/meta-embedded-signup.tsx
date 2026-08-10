@@ -35,7 +35,7 @@ export function MetaEmbeddedSignup() {
     if (!appId) { reject(new Error("App ID ausente")); return; }
     const initialize = () => {
       if (!window.FB) return false;
-      window.FB.init({ appId, cookie: true, xfbml: false, version: "v23.0" });
+      window.FB.init({ appId, cookie: true, xfbml: false, version: "v25.0" });
       resolve(window.FB);
       return true;
     };
@@ -93,7 +93,12 @@ export function MetaEmbeddedSignup() {
       auth_type: "rerequest",
       response_type: "code",
       override_default_response_type: true,
-      extras: { sessionInfoVersion: 3, setup: {} },
+      extras: {
+        setup: {},
+        featureType: "whatsapp_business_app_onboarding",
+        features: [{ name: "marketing_messages_lite" }],
+        sessionInfoVersion: "3",
+      },
     });
   };
 
