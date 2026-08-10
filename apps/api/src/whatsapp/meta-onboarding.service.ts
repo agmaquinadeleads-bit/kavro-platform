@@ -8,6 +8,19 @@ type PhoneListResponse = { data?: Array<{ id?: string }> };
 
 @Injectable()
 export class MetaOnboardingService {
+  readiness() {
+    const metaAppConfigured = Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_EMBEDDED_SIGNUP_CONFIG_ID);
+    const credentialVaultConfigured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const webhookConfigured = Boolean(process.env.META_APP_SECRET && process.env.META_WEBHOOK_VERIFY_TOKEN && credentialVaultConfigured);
+    return {
+      metaAppConfigured,
+      credentialVaultConfigured,
+      webhookConfigured,
+      ready: metaAppConfigured && credentialVaultConfigured && webhookConfigured,
+      graphVersion: process.env.META_GRAPH_API_VERSION ?? "v25.0"
+    };
+  }
+
   async complete(session: KavroSession, input: CompleteInput) {
     if (session.role === "member") throw new BadRequestException("Somente administradores podem conectar números");
     if (!input.code || !/^\d{3,30}$/.test(input.phoneNumberId) || !/^\d{3,30}$/.test(input.businessAccountId)) {

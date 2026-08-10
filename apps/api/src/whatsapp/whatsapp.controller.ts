@@ -12,7 +12,12 @@ export class WhatsappController {
 
   @Get("readiness")
   readiness(@CurrentSession() session: KavroSession) {
-    return { configured: this.evolution.isConfigured(), organizationId: session.organizationId, canManage: session.role === "owner" || session.role === "admin" };
+    return {
+      configured: this.evolution.isConfigured(),
+      organizationId: session.organizationId,
+      canManage: session.role === "owner" || session.role === "admin",
+      official: this.metaOnboarding.readiness()
+    };
   }
 
   @Post("meta/onboarding")

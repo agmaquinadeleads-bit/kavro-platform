@@ -76,6 +76,7 @@ export function MetaAuthPopup({ nonce }: { nonce: string }) {
   const codeRef = useRef("");
   const signupRef = useRef<SignupData | null>(null);
   const completedRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
 
   const notifyOpener = useCallback((payload: Record<string, unknown>) => {
     if (!window.opener || window.opener.closed) return false;
@@ -90,7 +91,7 @@ export function MetaAuthPopup({ nonce }: { nonce: string }) {
     completedRef.current = true;
     setMessage("Autorização concluída. Retornando ao Kavro...");
     notifyOpener({ type: "KAVRO_META_SIGNUP_COMPLETE", code, ...signup });
-    window.setTimeout(() => window.close(), 350);
+    closeTimerRef.current = window.setTimeout(() => window.close(), 2500);
   }, [notifyOpener]);
 
   useEffect(() => {
@@ -124,6 +125,16 @@ export function MetaAuthPopup({ nonce }: { nonce: string }) {
 
   useEffect(() => {
     const receive = (event: MessageEvent) => {
+      if (
+        event.origin === window.location.origin
+        && event.source === window.opener
+        && event.data?.type === "KAVRO_META_SIGNUP_ACK"
+        && event.data?.nonce === nonce
+      ) {
+        if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+        window.close();
+        return;
+      }
       if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
       const payload = parseSignupPayload(event.data);
       if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP") return;
@@ -138,14 +149,30 @@ export function MetaAuthPopup({ nonce }: { nonce: string }) {
       } else if (payload.event === "CANCEL") {
         setState("ready");
         setMessage("A configuração foi cancelada. Você pode tentar novamente.");
+        notifyOpener({ type: "KAVRO_META_SIGNUP_ERROR", message: "A configuração foi cancelada na Meta." });
       } else if (payload.event === "ERROR") {
         setState("ready");
         setMessage(payload.data?.error_message || "A Meta não concluiu a configuração. Tente novamente.");
+        notifyOpener({
+          type: "KAVRO_META_SIGNUP_ERROR",
+          message: payload.data?.error_message || "A Meta não concluiu a configuração."
+        });
       }
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [finishWhenComplete]);
+  }, [finishWhenComplete, nonce, notifyOpener]);
+
+  useEffect(() => {
+    if (state !== "connecting") return;
+    const timeout = window.setTimeout(() => {
+      if (completedRef.current) return;
+      setState("error");
+      setMessage("A Meta não concluiu a autorização dentro do tempo esperado. Feche esta janela e tente novamente.");
+      notifyOpener({ type: "KAVRO_META_SIGNUP_ERROR", message: "A autorização da Meta expirou. Tente novamente." });
+    }, 4 * 60 * 1000);
+    return () => window.clearTimeout(timeout);
+  }, [notifyOpener, state]);
 
   const login = () => {
     if (!sdk || !configId) return;
@@ -160,6 +187,7 @@ export function MetaAuthPopup({ nonce }: { nonce: string }) {
       if (!code) {
         setState("ready");
         setMessage("O acesso não foi autorizado. Você pode tentar novamente.");
+        notifyOpener({ type: "KAVRO_META_SIGNUP_ERROR", message: "O acesso à Meta não foi autorizado." });
         return;
       }
       codeRef.current = code;
