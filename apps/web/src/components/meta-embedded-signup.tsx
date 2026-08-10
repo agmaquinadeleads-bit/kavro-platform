@@ -10,6 +10,7 @@ type FacebookSdk = { init(options: Record<string, unknown>): void; login(callbac
 declare global { interface Window { FB?: FacebookSdk; fbAsyncInit?: () => void } }
 
 export function MetaEmbeddedSignup() {
+  const [ready, setReady] = useState(false);
   const [state, setState] = useState<"idle" | "connecting" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const signup = useRef<SignupData | null>(null);
@@ -55,13 +56,20 @@ export function MetaEmbeddedSignup() {
     window.setTimeout(() => { if (!window.FB) reject(new Error("Tempo esgotado")); }, 12000);
   });
 
-  const connect = async () => {
+  useEffect(() => {
+    if (!appId || !configId) { setMessage("A configuração pública da Meta não foi encontrada neste ambiente."); setState("error"); return; }
+    let active = true;
+    loadSdk()
+      .then(() => { if (active) { setReady(true); setState("idle"); setMessage(""); } })
+      .catch(() => { if (active) { setState("error"); setMessage("Não foi possível carregar a Meta. Verifique bloqueadores do navegador e atualize a página."); } });
+    return () => { active = false; };
+  }, [appId, configId]);
+
+  const connect = () => {
     if (!appId || !configId) { setState("error"); setMessage("A configuração pública da Meta não foi encontrada neste ambiente."); return; }
+    if (!ready || !window.FB) { setState("error"); setMessage("A conexão com a Meta ainda está sendo preparada. Atualize a página e tente novamente."); return; }
     signup.current = null; setState("connecting"); setMessage("Conclua as etapas na janela segura da Meta.");
-    let facebook: FacebookSdk;
-    try { facebook = await loadSdk(); }
-    catch { setState("error"); setMessage("O navegador bloqueou a conexão com a Meta. Libere pop-ups e tente novamente."); return; }
-    facebook.login(async (response) => {
+    window.FB.login(async (response) => {
       const code = response.authResponse?.code;
       const selected = signup.current;
       if (!code || !selected) { setState("error"); setMessage("A conexão não foi concluída. Tente novamente."); return; }
@@ -78,5 +86,5 @@ export function MetaEmbeddedSignup() {
     }, { config_id: configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
   };
 
-  return <><button type="button" onClick={connect} disabled={state === "connecting"}>{state === "connecting" ? "Conectando..." : "Continuar com a Meta"}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
+  return <><button type="button" onClick={connect} disabled={!ready || state === "connecting"}>{state === "connecting" ? "Conectando..." : ready ? "Continuar com a Meta" : "Preparando conexão..."}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
 }
