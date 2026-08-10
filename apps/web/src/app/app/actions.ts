@@ -1,0 +1,294 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+
+const uuidSchema = z.string().uuid();
+
+async function authenticatedContext() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("org_id, role")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!membership) redirect("/onboarding");
+
+  return { supabase, user, orgId: membership.org_id, role: membership.role };
+}
+
+const createLeadSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  email: z.union([z.string().trim().email(), z.literal("")]),
+  phone: z.string().trim().max(32),
+  source: z.string().trim().max(120),
+  value: z.coerce.number().min(0).max(999_999_999),
+  pipelineId: uuidSchema,
+  stageId: uuidSchema
+});
+
+export async function createLead(formData: FormData) {
+  const input = createLeadSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    source: formData.get("source"),
+    value: formData.get("value") || 0,
+    pipelineId: formData.get("pipeline_id"),
+    stageId: formData.get("stage_id")
+  });
+  if (!input.success) redirect("/app?error=invalid_lead");
+
+  const { supabase, user, orgId } = await authenticatedContext();
+  const { error } = await supabase.from("leads").insert({
+    org_id: orgId,
+    pipeline_id: input.data.pipelineId,
+    stage_id: input.data.stageId,
+    created_by: user.id,
+    name: input.data.name,
+    email: input.data.email || null,
+    phone: input.data.phone || null,
+    source: input.data.source || null,
+    value_in_cents: Math.round(input.data.value * 100)
+  });
+
+  if (error) redirect("/app?error=create_failed");
+  revalidatePath("/app");
+  redirect("/app?success=lead_created");
+}
+
+const moveLeadSchema = z.object({
+  leadId: uuidSchema,
+  stageId: uuidSchema,
+  version: z.coerce.number().int().positive(),
+  lossReason: z.string().trim().max(160)
+});
+
+export async function moveLead(formData: FormData) {
+  const input = moveLeadSchema.safeParse({
+    leadId: formData.get("lead_id"),
+    stageId: formData.get("stage_id"),
+    version: formData.get("version"),
+    lossReason: formData.get("loss_reason") ?? ""
+  });
+  if (!input.success) redirect("/app?error=invalid_move");
+
+  const { supabase, orgId } = await authenticatedContext();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ stage_id: input.data.stageId, loss_reason: input.data.lossReason || null })
+    .eq("id", input.data.leadId)
+    .eq("org_id", orgId)
+    .eq("version", input.data.version)
+    .select("id");
+
+  if (error) redirect("/app?error=move_failed");
+  if (!data?.length) redirect("/app?error=stale_lead");
+  revalidatePath("/app");
+  redirect("/app?success=lead_moved");
+}
+
+const archiveLeadSchema = z.object({
+  leadId: uuidSchema,
+  version: z.coerce.number().int().positive()
+});
+
+export async function archiveLead(formData: FormData) {
+  const input = archiveLeadSchema.safeParse({
+    leadId: formData.get("lead_id"),
+    version: formData.get("version")
+  });
+  if (!input.success) redirect("/app?error=invalid_archive");
+
+  const { supabase, orgId } = await authenticatedContext();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", input.data.leadId)
+    .eq("org_id", orgId)
+    .eq("version", input.data.version)
+    .select("id");
+
+  if (error) redirect("/app?error=archive_failed");
+  if (!data?.length) redirect("/app?error=stale_lead");
+  revalidatePath("/app");
+  redirect("/app?success=lead_archived");
+}
+
+const updateLeadSchema = z.object({
+  leadId: uuidSchema,
+  version: z.coerce.number().int().positive(),
+  name: z.string().trim().min(1).max(160),
+  email: z.union([z.string().trim().email(), z.literal("")]),
+  phone: z.string().trim().max(32),
+  source: z.string().trim().max(120),
+  value: z.coerce.number().min(0).max(999_999_999),
+  followUp: z.string().trim(),
+  notes: z.string().trim().max(10000)
+});
+
+export async function updateLead(formData: FormData) {
+  const input = updateLeadSchema.safeParse({
+    leadId: formData.get("lead_id"),
+    version: formData.get("version"),
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    source: formData.get("source"),
+    value: formData.get("value") || 0,
+    followUp: formData.get("follow_up") ?? "",
+    notes: formData.get("notes") ?? ""
+  });
+  if (!input.success) redirect("/app?error=invalid_lead");
+
+  const followUpAt = input.data.followUp ? new Date(input.data.followUp) : null;
+  if (followUpAt && Number.isNaN(followUpAt.getTime())) redirect(`/app/leads/${input.data.leadId}?error=invalid_date`);
+
+  const { supabase, orgId } = await authenticatedContext();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({
+      name: input.data.name,
+      email: input.data.email || null,
+      phone: input.data.phone || null,
+      source: input.data.source || null,
+      value_in_cents: Math.round(input.data.value * 100),
+      follow_up_at: followUpAt?.toISOString() ?? null,
+      notes: input.data.notes || null
+    })
+    .eq("id", input.data.leadId)
+    .eq("org_id", orgId)
+    .eq("version", input.data.version)
+    .select("id");
+
+  if (error) redirect(`/app/leads/${input.data.leadId}?error=update_failed`);
+  if (!data?.length) redirect(`/app/leads/${input.data.leadId}?error=stale_lead`);
+  revalidatePath("/app");
+  revalidatePath(`/app/leads/${input.data.leadId}`);
+  redirect(`/app/leads/${input.data.leadId}?success=lead_updated`);
+}
+
+const stageSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  kind: z.enum(["open", "won", "lost"])
+});
+
+export async function createStage(formData: FormData) {
+  const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind") });
+  if (!input.success) redirect("/app?error=invalid_stage");
+
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app?error=forbidden");
+
+  const { data: pipeline } = await supabase.from("pipelines").select("id").eq("org_id", orgId).order("position").limit(1).maybeSingle();
+  if (!pipeline) redirect("/app?error=pipeline_missing");
+
+  const { data: existingStages } = await supabase.from("pipeline_stages").select("position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: false });
+  if ((existingStages?.length ?? 0) >= 30) redirect("/app?error=stage_limit");
+  if (input.data.kind === "won" && existingStages?.some((stage) => stage.is_won)) redirect("/app?error=stage_kind_exists");
+  if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect("/app?error=stage_kind_exists");
+
+  const position = (existingStages?.[0]?.position ?? -1) + 1;
+  const { error } = await supabase.from("pipeline_stages").insert({ org_id: orgId, pipeline_id: pipeline.id, name: input.data.name, position, is_won: input.data.kind === "won", is_lost: input.data.kind === "lost" });
+  if (error) redirect("/app?error=stage_create_failed");
+  revalidatePath("/app");
+  redirect("/app?success=stage_created");
+}
+
+const renameStageSchema = z.object({ stageId: uuidSchema, name: z.string().trim().min(1).max(100) });
+
+export async function renameStage(formData: FormData) {
+  const input = renameStageSchema.safeParse({ stageId: formData.get("stage_id"), name: formData.get("name") });
+  if (!input.success) redirect("/app?error=invalid_stage");
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app?error=forbidden");
+  const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id");
+  if (error || !data?.length) redirect("/app?error=stage_update_failed");
+  revalidatePath("/app");
+  redirect("/app?success=stage_renamed");
+}
+
+const createTaskSchema = z.object({
+  leadId: uuidSchema,
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2000),
+  dueAt: z.string().trim()
+});
+
+export async function createLeadTask(formData: FormData) {
+  const input = createTaskSchema.safeParse({
+    leadId: formData.get("lead_id"),
+    title: formData.get("title"),
+    description: formData.get("description") ?? "",
+    dueAt: formData.get("due_at") ?? ""
+  });
+  if (!input.success) redirect(`/app/leads/${formData.get("lead_id")}?error=invalid_task`);
+
+  const dueAt = input.data.dueAt ? new Date(input.data.dueAt) : null;
+  if (dueAt && Number.isNaN(dueAt.getTime())) redirect(`/app/leads/${input.data.leadId}?error=invalid_task_date`);
+
+  const { supabase, user, orgId } = await authenticatedContext();
+  const { error } = await supabase.from("lead_tasks").insert({
+    org_id: orgId,
+    lead_id: input.data.leadId,
+    title: input.data.title,
+    description: input.data.description || null,
+    due_at: dueAt?.toISOString() ?? null,
+    assigned_to: user.id,
+    created_by: user.id
+  });
+  if (error) redirect(`/app/leads/${input.data.leadId}?error=task_create_failed`);
+  revalidatePath(`/app/leads/${input.data.leadId}`);
+  redirect(`/app/leads/${input.data.leadId}?success=task_created`);
+}
+
+const toggleTaskSchema = z.object({
+  leadId: uuidSchema,
+  taskId: uuidSchema,
+  version: z.coerce.number().int().positive(),
+  completed: z.enum(["true", "false"])
+});
+
+export async function toggleLeadTask(formData: FormData) {
+  const input = toggleTaskSchema.safeParse({
+    leadId: formData.get("lead_id"),
+    taskId: formData.get("task_id"),
+    version: formData.get("version"),
+    completed: formData.get("completed")
+  });
+  if (!input.success) redirect(`/app/leads/${formData.get("lead_id")}?error=invalid_task`);
+
+  const { supabase, orgId } = await authenticatedContext();
+  const { data, error } = await supabase.from("lead_tasks")
+    .update({ completed_at: input.data.completed === "true" ? new Date().toISOString() : null })
+    .eq("id", input.data.taskId)
+    .eq("lead_id", input.data.leadId)
+    .eq("org_id", orgId)
+    .eq("version", input.data.version)
+    .select("id");
+  if (error) redirect(`/app/leads/${input.data.leadId}?error=task_update_failed`);
+  if (!data?.length) redirect(`/app/leads/${input.data.leadId}?error=stale_task`);
+  revalidatePath(`/app/leads/${input.data.leadId}`);
+  redirect(`/app/leads/${input.data.leadId}?success=task_updated`);
+}
+
+const assignLeadSchema = z.object({ leadId: uuidSchema, version: z.coerce.number().int().positive(), ownerId: z.union([uuidSchema, z.literal("")]) });
+
+export async function assignLead(formData: FormData) {
+  const input = assignLeadSchema.safeParse({ leadId: formData.get("lead_id"), version: formData.get("version"), ownerId: formData.get("owner_id") ?? "" });
+  if (!input.success) redirect(`/app/leads/${formData.get("lead_id")}?error=invalid_assignment`);
+  const { supabase, user, orgId, role } = await authenticatedContext();
+  if (role === "member" && input.data.ownerId !== user.id) redirect(`/app/leads/${input.data.leadId}?error=assignment_forbidden`);
+  const { data, error } = await supabase.from("leads").update({ owner_id: input.data.ownerId || null }).eq("id", input.data.leadId).eq("org_id", orgId).eq("version", input.data.version).select("id");
+  if (error) redirect(`/app/leads/${input.data.leadId}?error=assignment_failed`);
+  if (!data?.length) redirect(`/app/leads/${input.data.leadId}?error=stale_lead`);
+  revalidatePath("/app"); revalidatePath(`/app/leads/${input.data.leadId}`);
+  redirect(`/app/leads/${input.data.leadId}?success=lead_assigned`);
+}

@@ -1,0 +1,16 @@
+.git
+.next
+**/.next
+node_modules
+**/node_modules
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage
+docs
+legacy
+index*.html
+*.zip
+*.log
+.DS_Store

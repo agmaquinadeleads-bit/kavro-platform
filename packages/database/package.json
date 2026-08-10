@@ -1,0 +1,12 @@
+{
+  "name": "@kavro/database",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "echo 'SQL migrations: no TypeScript check required'",
+    "lint": "echo 'SQL lint will be enabled with the local database environment'",
+    "test": "echo 'RLS tests require the local Supabase test environment'",
+    "build": "echo 'SQL migrations do not require a build step'"
+  }
+}
+

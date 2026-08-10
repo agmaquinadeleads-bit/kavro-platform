@@ -1,0 +1,35 @@
+{
+  "name": "@kavro/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "test:rls": "node scripts/test-tenant-isolation.mjs",
+    "test:leads": "node scripts/test-lead-crud.mjs",
+    "test:tasks": "node scripts/test-lead-tasks.mjs",
+    "test:team": "node scripts/test-team-invitations.mjs",
+    "test:whatsapp": "node scripts/test-whatsapp-rls.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "0.12.3",
+    "@supabase/supabase-js": "2.110.8",
+    "next": "16.2.12",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.12",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}

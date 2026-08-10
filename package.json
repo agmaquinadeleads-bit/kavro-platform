@@ -1,0 +1,16 @@
+{
+  "name": "kavro",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @kavro/web --filter @kavro/api dev",
+    "build": "pnpm --filter @kavro/contracts build && pnpm --filter @kavro/api build && pnpm --filter @kavro/web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  }
+}
