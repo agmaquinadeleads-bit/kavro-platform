@@ -69,7 +69,12 @@ export function MetaEmbeddedSignup() {
     if (!appId || !configId) { setState("error"); setMessage("A configuração pública da Meta não foi encontrada neste ambiente."); return; }
     if (!ready || !window.FB) { setState("error"); setMessage("A conexão com a Meta ainda está sendo preparada. Atualize a página e tente novamente."); return; }
     signup.current = null; setState("connecting"); setMessage("Conclua as etapas na janela segura da Meta.");
+    const popupTimeout = window.setTimeout(() => {
+      setState("error");
+      setMessage("A janela da Meta não abriu. Permita pop-ups para este site e tente novamente.");
+    }, 15000);
     window.FB.login(async (response) => {
+      window.clearTimeout(popupTimeout);
       const code = response.authResponse?.code;
       const selected = signup.current;
       if (!code || !selected) { setState("error"); setMessage("A conexão não foi concluída. Tente novamente."); return; }
@@ -86,5 +91,5 @@ export function MetaEmbeddedSignup() {
     }, { config_id: configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
   };
 
-  return <><button type="button" onClick={connect} disabled={!ready || state === "connecting"}>{state === "connecting" ? "Conectando..." : ready ? "Continuar com a Meta" : "Preparando conexão..."}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
+  return <><button className="meta-connect-button" type="button" onClick={connect} disabled={!ready || state === "connecting"}>{state === "connecting" ? "Conectando..." : ready ? "Continuar com a Meta" : "Preparando conexão..."}</button>{message ? <small className={`availability-note ${state}`}>{message}</small> : null}</>;
 }
