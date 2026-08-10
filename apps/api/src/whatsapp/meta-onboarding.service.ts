@@ -16,7 +16,7 @@ export class MetaOnboardingService {
 
     const appId = process.env.META_APP_ID;
     const appSecret = process.env.META_APP_SECRET;
-    const graphVersion = process.env.META_GRAPH_API_VERSION ?? "v23.0";
+    const graphVersion = process.env.META_GRAPH_API_VERSION ?? "v25.0";
     if (!appId || !appSecret) throw new ServiceUnavailableException("Cadastro da Meta não configurado");
 
     const tokenResponse = await fetch(`https://graph.facebook.com/${graphVersion}/oauth/access_token`, {
