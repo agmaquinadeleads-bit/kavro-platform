@@ -249,6 +249,53 @@ export async function createLeadTask(formData: FormData) {
   redirect(`/app/leads/${input.data.leadId}?success=task_created`);
 }
 
+const createLeadActivitySchema = z.object({
+  leadId: uuidSchema,
+  activityType: z.enum(["note", "call", "meeting", "message"]),
+  content: z.string().trim().min(1).max(4000),
+  occurredAt: z.string().trim(),
+});
+
+export async function createLeadActivity(formData: FormData) {
+  const fallbackLeadId = String(formData.get("lead_id") ?? "");
+  const input = createLeadActivitySchema.safeParse({
+    leadId: formData.get("lead_id"),
+    activityType: formData.get("activity_type"),
+    content: formData.get("content"),
+    occurredAt: formData.get("occurred_at") ?? "",
+  });
+
+  if (!input.success) {
+    redirect(`/app/leads/${fallbackLeadId}?error=invalid_activity`);
+  }
+
+  const occurredAt = input.data.occurredAt
+    ? new Date(input.data.occurredAt)
+    : new Date();
+
+  if (Number.isNaN(occurredAt.getTime())) {
+    redirect(`/app/leads/${input.data.leadId}?error=invalid_activity_date`);
+  }
+
+  const { supabase, user, orgId } = await authenticatedContext();
+  const { error } = await supabase.from("lead_activities").insert({
+    org_id: orgId,
+    lead_id: input.data.leadId,
+    activity_type: input.data.activityType,
+    content: input.data.content,
+    occurred_at: occurredAt.toISOString(),
+    created_by: user.id,
+  });
+
+  if (error) {
+    redirect(`/app/leads/${input.data.leadId}?error=activity_create_failed`);
+  }
+
+  revalidatePath(`/app/leads/${input.data.leadId}`);
+  revalidatePath("/app");
+  redirect(`/app/leads/${input.data.leadId}?success=activity_created`);
+}
+
 const toggleTaskSchema = z.object({
   leadId: uuidSchema,
   taskId: uuidSchema,
