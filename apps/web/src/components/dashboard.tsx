@@ -70,11 +70,9 @@ export function Dashboard({ userName, organizationName, pipelineId, pipelineName
           <Link href="/app/leads">☰ <span>Leads</span></Link>
           <a href="#new-lead">◎ <span>Novo lead</span></a>
           <Link href="/app/whatsapp">◌ <span>Conversas</span></Link>
-          <a href="#relatorios">⌁ <span>Relatórios</span></a>
         </nav>
         <div className="sidebar-footer">
           {canSeeTeamTasks ? <Link href="/app/team">♙ <span>Equipe</span></Link> : null}
-          <a href="#configuracoes">⚙ <span>Configurações</span></a>
           <div className="profile"><span>{initials(userName)}</span><div><strong>{userName}</strong><small>{organizationName}</small></div></div>
           <form action={logout}><button className="logout-button" type="submit">Sair da conta</button></form>
         </div>
