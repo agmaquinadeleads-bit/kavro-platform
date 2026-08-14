@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LeadsTable } from "@/components/LeadsTable";
+import { LeadsPageClient } from "@/components/LeadsPageClient";
 import { type LeadRowData } from "@/components/LeadRow";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,8 +9,19 @@ export const metadata = {
 };
 
 type LeadsPageProps = {
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    success?: string;
+    page?: string;
+    pageSize?: string;
+    sortBy?: string;
+    sortOrder?: string;
+  }>;
 };
+
+// Whitelist de colunas permitidas para sort (segurança contra SQL injection)
+const SORTABLE_COLUMNS = ["name", "email", "phone", "source", "stage_id", "value_in_cents", "owner_id", "created_at"];
+const VALID_PAGE_SIZES = [25, 50, 100];
 
 const stageColorMap: Record<string, "gray" | "blue" | "amber" | "green" | "purple"> = {
   "gray": "gray",
@@ -34,6 +45,16 @@ function getStageColor(stagePosition: number): "gray" | "blue" | "amber" | "gree
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const params = await searchParams;
 
+  // Parse and validate pagination parameters
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
+  const pageSize = VALID_PAGE_SIZES.includes(parseInt(params.pageSize || "25", 10))
+    ? parseInt(params.pageSize || "25", 10)
+    : 25;
+  const sortBy = SORTABLE_COLUMNS.includes(params.sortBy || "created_at")
+    ? (params.sortBy || "created_at")
+    : "created_at";
+  const sortOrder = (params.sortOrder === "asc" ? "asc" : "desc") as "asc" | "desc";
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -54,14 +75,26 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   const orgId = membership.org_id;
 
-  // Fetch all leads for this organization with stage information
+  // Fetch total count for pagination
+  const { count: totalCount } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .is("deleted_at", null);
+
+  const totalItems = totalCount || 0;
+
+  // Calculate offset
+  const offset = (page - 1) * pageSize;
+
+  // Fetch paginated and sorted leads for this organization
   const { data: leadsData } = await supabase
     .from("leads")
     .select("id, name, email, phone, source, stage_id, owner_id, value_in_cents, created_at")
     .eq("org_id", orgId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(1000);
+    .order(sortBy, { ascending: sortOrder === "asc" })
+    .range(offset, offset + pageSize - 1);
 
   // Fetch stage information
   const stageIds = [...new Set((leadsData ?? []).map((lead) => lead.stage_id))];
@@ -145,9 +178,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         <div className="leads-title-section">
           <h1>Leads</h1>
           <p className="leads-subtitle">
-            {mappedLeads.length === 0
+            {totalItems === 0
               ? "Nenhum lead criado"
-              : `${mappedLeads.length} ${mappedLeads.length === 1 ? "lead" : "leads"}`}
+              : `${totalItems} ${totalItems === 1 ? "lead" : "leads"}`}
           </p>
         </div>
         <div className="leads-actions">
@@ -170,7 +203,14 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       ) : null}
 
       <div className="leads-table-container">
-        <LeadsTable leads={mappedLeads} />
+        <LeadsPageClient
+          leads={mappedLeads}
+          totalItems={totalItems}
+          currentPage={page}
+          pageSize={pageSize}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+        />
       </div>
 
       <style jsx>{`
@@ -260,7 +300,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           background: var(--surface);
           border: 1px solid var(--line);
           border-radius: 8px;
-          overflow: hidden;
+          overflow: auto;
+          display: flex;
+          flex-direction: column;
         }
 
         .leads-table-wrapper {

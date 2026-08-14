@@ -5,9 +5,12 @@ import { LeadRow, type LeadRowData } from "./LeadRow";
 
 interface LeadsTableProps {
   leads: LeadRowData[];
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  onHeaderClick?: (columnKey: string) => void;
 }
 
-export function LeadsTable({ leads }: LeadsTableProps) {
+export function LeadsTable({ leads, sortBy = "created_at", sortOrder = "desc", onHeaderClick }: LeadsTableProps) {
   const tableStyle: CSSProperties = {
     width: "100%",
     borderCollapse: "collapse",
@@ -27,7 +30,29 @@ export function LeadsTable({ leads }: LeadsTableProps) {
     color: "var(--muted)",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
-    borderBottom: "1px solid var(--line)"
+    borderBottom: "1px solid var(--line)",
+    cursor: onHeaderClick ? "pointer" : "default",
+    userSelect: "none",
+    transition: "background-color 0.15s ease"
+  };
+
+  const getSortIcon = (columnKey: string): string => {
+    if (sortBy !== columnKey) return "⇅";
+    return sortOrder === "asc" ? "▲" : "▼";
+  };
+
+  const handleHeaderClick = (columnKey: string) => {
+    if (onHeaderClick) {
+      onHeaderClick(columnKey);
+    }
+  };
+
+  const handleHeaderHoverEnter = (e: React.MouseEvent<HTMLTableCellElement>) => {
+    e.currentTarget.style.backgroundColor = "#f0f2f0";
+  };
+
+  const handleHeaderHoverLeave = (e: React.MouseEvent<HTMLTableCellElement>) => {
+    e.currentTarget.style.backgroundColor = "#fafbfa";
   };
 
   const emptyStateStyle: CSSProperties = {
@@ -85,14 +110,94 @@ export function LeadsTable({ leads }: LeadsTableProps) {
       <table style={tableStyle}>
         <thead style={theadStyle}>
           <tr>
-            <th style={thStyle}>Nome</th>
-            <th style={thStyle}>Email</th>
-            <th style={thStyle}>Telefone</th>
-            <th style={thStyle}>Origem</th>
-            <th style={thStyle}>Etapa</th>
-            <th style={{ ...thStyle, textAlign: "right" }}>Valor</th>
-            <th style={thStyle}>Atribuído</th>
-            <th style={thStyle}>Data</th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("name")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Nome
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("name")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("email")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Email
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("email")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("phone")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Telefone
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("phone")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("source")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Origem
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("source")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("stage_id")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Etapa
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("stage_id")}</span>
+              </span>
+            </th>
+            <th
+              style={{ ...thStyle, textAlign: "right" }}
+              onClick={() => handleHeaderClick("value_in_cents")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" }}>
+                Valor
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("value_in_cents")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("owner_id")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Atribuído
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("owner_id")}</span>
+              </span>
+            </th>
+            <th
+              style={thStyle}
+              onClick={() => handleHeaderClick("created_at")}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                Data
+                <span style={{ fontSize: "12px", opacity: 0.6 }}>{getSortIcon("created_at")}</span>
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
