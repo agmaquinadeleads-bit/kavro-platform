@@ -19,10 +19,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const { data: membership } = await supabase.from("organization_members").select("org_id, role").eq("user_id", user.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
   if (!membership) redirect("/onboarding");
 
-  const [{ data: organization }, { data: pipeline }] = await Promise.all([
-    supabase.from("organizations").select("name").eq("id", membership.org_id).single(),
-    supabase.from("pipelines").select("id, name").eq("org_id", membership.org_id).order("position", { ascending: true }).limit(1).maybeSingle()
-  ]);
+  const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", membership.org_id).order("position", { ascending: true }).limit(1).maybeSingle();
 
   let stages: DashboardStage[] = [];
   let leads: DashboardLead[] = [];
@@ -66,5 +63,5 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  return <Dashboard userName={userName} organizationName={organization?.name ?? "Organização"} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} />;
+  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} />;
 }

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { archiveLead, createLead, createStage, renameStage } from "@/app/app/actions";
-import { logout } from "@/app/login/actions";
 import { MoveLeadForm } from "./move-lead-form";
 
 export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
@@ -9,7 +8,6 @@ export type DashboardTask = { id: string; leadId: string; leadName: string; titl
 
 type DashboardProps = {
   userName: string;
-  organizationName: string;
   pipelineId: string | null;
   pipelineName: string;
   stages: DashboardStage[];
@@ -24,7 +22,6 @@ type DashboardProps = {
   feedback?: { kind: "error" | "success"; message: string };
 };
 
-function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "US"; }
 function currency(valueInCents: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100); }
 function followUpState(value: string | null) {
   if (!value) return null;
@@ -46,7 +43,7 @@ function taskDueState(value: string | null) {
   return { kind: "future", label: new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date) };
 }
 
-export function Dashboard({ userName, organizationName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback }: DashboardProps) {
+export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback }: DashboardProps) {
   const openLeads = leads.filter((lead) => { const stage = stages.find((item) => item.id === lead.stageId); return !stage?.isWon && !stage?.isLost; });
   const wonLeads = leads.filter((lead) => stages.find((stage) => stage.id === lead.stageId)?.isWon);
   const totalValue = openLeads.reduce((sum, lead) => sum + lead.valueInCents, 0);
@@ -61,26 +58,9 @@ export function Dashboard({ userName, organizationName, pipelineId, pipelineName
   ];
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><span>K</span>Kavro</div>
-        <nav aria-label="Navegação principal">
-          <a className="active" href="#dashboard">▦ <span>Visão geral</span></a>
-          <a href="#pipeline">◫ <span>Pipeline</span></a>
-          <Link href="/app/leads">☰ <span>Leads</span></Link>
-          <a href="#new-lead">◎ <span>Novo lead</span></a>
-          <Link href="/app/whatsapp">◌ <span>Conversas</span></Link>
-        </nav>
-        <div className="sidebar-footer">
-          {canSeeTeamTasks ? <Link href="/app/team">♙ <span>Equipe</span></Link> : null}
-          <div className="profile"><span>{initials(userName)}</span><div><strong>{userName}</strong><small>{organizationName}</small></div></div>
-          <form action={logout}><button className="logout-button" type="submit">Sair da conta</button></form>
-        </div>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar"><div><p>AMBIENTE DE HOMOLOGAÇÃO</p><h1>Olá, {userName}</h1></div><div className="top-actions"><a className="primary-link" href="#new-lead">+ Novo lead</a></div></header>
-        <div className="content" id="dashboard">
+    <>
+      <header className="topbar"><div><p>AMBIENTE DE HOMOLOGAÇÃO</p><h1>Olá, {userName}</h1></div><div className="top-actions"><a className="primary-link" href="#new-lead">+ Novo lead</a></div></header>
+      <div className="content" id="dashboard">
           {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
           {(overdueCount > 0 || todayCount > 0) ? <section className="followup-alerts" aria-label="Alertas de follow-up">{overdueCount > 0 ? <div className="overdue"><strong>{overdueCount}</strong><span>follow-up{overdueCount === 1 ? "" : "s"} vencido{overdueCount === 1 ? "" : "s"}</span></div> : null}{todayCount > 0 ? <div className="today"><strong>{todayCount}</strong><span>follow-up{todayCount === 1 ? "" : "s"} para hoje</span></div> : null}</section> : null}
           <section className="metrics" aria-label="Indicadores comerciais">
@@ -143,7 +123,6 @@ export function Dashboard({ userName, organizationName, pipelineId, pipelineName
 
           <section className="lead-table-section" aria-labelledby="lead-table-title"><div><h2 id="lead-table-title">Leads em tabela</h2><span>{leads.length} nesta página</span></div><div className="table-scroll"><table><caption>Leads filtrados do pipeline {pipelineName}</caption><thead><tr><th>Lead</th><th>Contato</th><th>Origem</th><th>Etapa</th><th>Follow-up</th><th>Valor</th><th>Ação</th></tr></thead><tbody>{leads.map((lead) => { const leadStage = stages.find((stage) => stage.id === lead.stageId); const followUp = followUpState(lead.followUpAt); return <tr key={lead.id}><td><strong>{lead.name}</strong><small>{lead.email}</small></td><td>{lead.phone || "—"}</td><td>{lead.source || "—"}</td><td><span className="table-stage">{leadStage?.name ?? "—"}</span></td><td>{followUp ? <span className={`followup-badge ${followUp.kind}`}>{followUp.label}</span> : "—"}</td><td>{currency(lead.valueInCents)}</td><td><Link href={`/app/leads/${lead.id}`}>Editar</Link></td></tr>; })}</tbody></table></div></section>
         </div>
-      </section>
-    </main>
+    </>
   );
 }

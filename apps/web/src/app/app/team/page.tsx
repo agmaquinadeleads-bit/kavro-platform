@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { cancelInvitation, changeMemberRole, createInvitation, removeMember } from "./actions";
@@ -22,7 +21,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
   const feedback = params.error ? { kind: "error", text: errors[params.error] ?? "Não foi possível concluir a ação." } : params.success ? { kind: "success", text: successes[params.success] ?? "Ação concluída." } : null;
 
   return <main className="team-page"><div className="team-shell">
-    <header className="team-header"><div><Link href="/app">← Voltar ao painel</Link><p className="eyebrow">CONFIGURAÇÕES</p><h1>Equipe</h1><p>Convide usuários e controle o nível de acesso ao Kavro.</p></div></header>
+    <header className="team-header"><div><p className="eyebrow">CONFIGURAÇÕES</p><h1>Equipe</h1><p>Convide usuários e controle o nível de acesso ao Kavro.</p></div></header>
     {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.text}</div> : null}
     {params.invitation ? <div className="invite-link-box"><strong>Link do convite</strong><code>{`/invite/${params.invitation}`}</code><small>No ambiente publicado, o link usará automaticamente o domínio do Kavro.</small></div> : null}
     <section className="team-grid">

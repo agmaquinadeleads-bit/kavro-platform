@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LeadsPageClient } from "@/components/LeadsPageClient";
 import { type LeadRowData } from "@/components/LeadRow";
@@ -293,11 +292,6 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               ? "Nenhum lead criado"
               : `${totalItems} ${totalItems === 1 ? "lead" : "leads"}`}
           </p>
-        </div>
-        <div className="leads-actions">
-          <Link href="/app" className="btn-secondary">
-            ← Voltar ao dashboard
-          </Link>
         </div>
       </div>
 
