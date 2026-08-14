@@ -161,46 +161,43 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     // Currently placeholder - will be implemented when creatives table is added
   }
 
-  // Fetch total count for pagination
-  const { count: totalCount } = await countQuery;
-  const totalItems = totalCount || 0;
-
   // Calculate offset
   const offset = (page - 1) * pageSize;
 
-  // Fetch paginated and sorted leads for this organization
-  const { data: leadsData } = await leadsQuery
-    .order(sortBy, { ascending: sortOrder === "asc" })
-    .range(offset, offset + pageSize - 1);
+  // Fetch count, leads, stages and origins in parallel (independent queries —
+  // sequential awaits here were adding 4+ round-trips of latency per page load)
+  const [
+    { count: totalCount },
+    { data: leadsData },
+    { data: allStagesData },
+    { data: originsData }
+  ] = await Promise.all([
+    countQuery,
+    leadsQuery
+      .order(sortBy, { ascending: sortOrder === "asc" })
+      .range(offset, offset + pageSize - 1),
+    supabase
+      .from("pipeline_stages")
+      .select("id, name, position")
+      .eq("org_id", orgId)
+      .order("position", { ascending: true }),
+    supabase
+      .from("leads")
+      .select("source")
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .is("source", "not.is.null")
+  ]);
 
-  // Fetch stage information
-  const stageIds = [...new Set((leadsData ?? []).map((lead) => lead.stage_id))];
-  const { data: stagesData } = await supabase
-    .from("pipeline_stages")
-    .select("id, name, position")
-    .in("id", stageIds);
+  const totalItems = totalCount || 0;
 
+  // Reuse the full org stage list for both the row badges and the filter dropdown
   const stageMap = new Map(
-    (stagesData ?? []).map((stage) => [
+    (allStagesData ?? []).map((stage) => [
       stage.id,
       { name: stage.name, position: stage.position }
     ])
   );
-
-  // Fetch all stages for filter dropdown
-  const { data: allStagesData } = await supabase
-    .from("pipeline_stages")
-    .select("id, name")
-    .eq("org_id", orgId)
-    .order("position", { ascending: true });
-
-  // Fetch all origins for filter dropdown
-  const { data: originsData } = await supabase
-    .from("leads")
-    .select("source")
-    .eq("org_id", orgId)
-    .is("deleted_at", null)
-    .is("source", "not.is.null");
 
   const origins = Array.from(
     new Set(
@@ -224,7 +221,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     creativeNamesMap[creative.id] = creative.name;
   });
 
-  // Fetch owner information (members with their profiles)
+  // Fetch owner information (members with their profiles) — depends on leadsData, so it runs after
   const ownerIds = [
     ...new Set(
       (leadsData ?? [])

@@ -29,8 +29,20 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let totalCount = 0;
   let tasks: DashboardTask[] = [];
 
+  const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
+  let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
+  if (!canSeeTeamTasks || params.tasks !== "all") taskQuery = taskQuery.eq("assigned_to", user.id);
+
+  type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean };
+  const stagesPromise: Promise<{ data: StageRow[] | null }> = pipeline
+    ? supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
+    : Promise.resolve({ data: null });
+
+  // Tasks are independent of the pipeline/stage/lead lookups below, so run them
+  // in parallel instead of waiting on that chain first (saves a full round-trip).
+  const [{ data: stageRows }, { data: taskRows }] = await Promise.all([stagesPromise, taskQuery]);
+
   if (pipeline) {
-    const { data: stageRows } = await supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true });
     stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost }));
 
     let leadQuery = supabase.from("leads").select("id, name, email, phone, source, stage_id, value_in_cents, version, follow_up_at, created_at", { count: "exact" }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null);
@@ -42,10 +54,6 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at }));
   }
 
-  const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
-  let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
-  if (!canSeeTeamTasks || params.tasks !== "all") taskQuery = taskQuery.eq("assigned_to", user.id);
-  const { data: taskRows } = await taskQuery;
   tasks = (taskRows ?? []).map((task) => {
     const relatedLead = Array.isArray(task.leads) ? task.leads[0] : task.leads;
     return { id: task.id, leadId: task.lead_id, leadName: relatedLead?.name ?? "Lead", title: task.title, dueAt: task.due_at, assignedTo: task.assigned_to, version: task.version };
