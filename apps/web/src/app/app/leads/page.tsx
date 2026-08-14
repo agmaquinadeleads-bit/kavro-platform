@@ -200,8 +200,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     .select("source")
     .eq("org_id", orgId)
     .is("deleted_at", null)
-    .is("source", "not.is.null")
-    .distinct();
+    .is("source", "not.is.null");
 
   const origins = Array.from(
     new Set(
