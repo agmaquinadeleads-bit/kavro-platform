@@ -211,7 +211,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   ).sort();
 
   // Fetch creatives for filter dropdown (placeholder - will be populated when creatives table exists)
-  const creatives = [];
+  const creatives: Array<{ id: string; name: string }> = [];
 
   // Create maps for badge display
   const stageNamesMap: Record<string, string> = {};
@@ -220,7 +220,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   });
 
   const creativeNamesMap: Record<string, string> = {};
-  creatives.forEach((creative: any) => {
+  creatives.forEach((creative) => {
     creativeNamesMap[creative.id] = creative.name;
   });
 
