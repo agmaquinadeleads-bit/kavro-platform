@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { archiveLead, createLead, createStage, renameStage } from "@/app/app/actions";
+import { DashboardChartsLoader } from "./dashboard-charts-loader";
 import { MoveLeadForm } from "./move-lead-form";
 
 export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
@@ -66,6 +67,8 @@ export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, t
           <section className="metrics" aria-label="Indicadores comerciais">
             {metrics.map((metric) => <article className="metric" key={metric.label}><div><span>{metric.label}</span></div><strong>{metric.value}</strong><small><em>{metric.detail}</em></small></article>)}
           </section>
+
+          <DashboardChartsLoader />
 
           <section className="task-center" id="tasks" aria-labelledby="task-center-title">
             <div className="task-center-header"><div><p className="eyebrow">AGENDA COMERCIAL</p><h2 id="task-center-title">Tarefas pendentes</h2></div>{canSeeTeamTasks ? <nav aria-label="Escopo das tarefas"><a className={taskScope === "mine" ? "active" : ""} href="/app?tasks=mine">Minhas</a><a className={taskScope === "all" ? "active" : ""} href="/app?tasks=all">Equipe</a></nav> : null}</div>
