@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { archiveLead, createLead, createStage, renameStage } from "@/app/app/actions";
+import type { DashboardEvolutionPoint, DashboardOriginPoint } from "./dashboard-charts";
 import { DashboardChartsLoader } from "./dashboard-charts-loader";
 import { MoveLeadForm } from "./move-lead-form";
 
 export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
 export type DashboardLead = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stageId: string; valueInCents: number; version: number; followUpAt: string | null; createdAt: string };
 export type DashboardTask = { id: string; leadId: string; leadName: string; title: string; dueAt: string | null; assignedTo: string | null; version: number };
+export type { DashboardEvolutionPoint, DashboardOriginPoint };
 
 type DashboardProps = {
   userName: string;
@@ -26,6 +28,8 @@ type DashboardProps = {
   openRevenueInCents: number;
   leadsLast7Days: number;
   overdueFollowUpsCount: number;
+  evolutionData: DashboardEvolutionPoint[];
+  originData: DashboardOriginPoint[];
 };
 
 function currency(valueInCents: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100); }
@@ -49,7 +53,7 @@ function taskDueState(value: string | null) {
   return { kind: "future", label: new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date) };
 }
 
-export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount }: DashboardProps) {
+export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, evolutionData, originData }: DashboardProps) {
   const overdueCount = leads.filter((lead) => followUpState(lead.followUpAt)?.kind === "overdue").length;
   const todayCount = leads.filter((lead) => followUpState(lead.followUpAt)?.kind === "today").length;
   const firstStage = stages.find((stage) => !stage.isWon && !stage.isLost);
@@ -77,7 +81,7 @@ export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, t
             {metrics.map((metric) => <article className="metric" key={metric.label}><div><span>{metric.label}</span></div><strong>{metric.value}</strong><small><em>{metric.detail}</em></small></article>)}
           </section>
 
-          <DashboardChartsLoader />
+          <DashboardChartsLoader evolutionData={evolutionData} originData={originData} />
 
           <section className="task-center" id="tasks" aria-labelledby="task-center-title">
             <div className="task-center-header"><div><p className="eyebrow">AGENDA COMERCIAL</p><h2 id="task-center-title">Tarefas pendentes</h2></div>{canSeeTeamTasks ? <nav aria-label="Escopo das tarefas"><a className={taskScope === "mine" ? "active" : ""} href="/app?tasks=mine">Minhas</a><a className={taskScope === "all" ? "active" : ""} href="/app?tasks=all">Equipe</a></nav> : null}</div>

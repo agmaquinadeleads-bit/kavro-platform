@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Dashboard, type DashboardLead, type DashboardStage, type DashboardTask } from "@/components/dashboard";
+import { Dashboard, type DashboardEvolutionPoint, type DashboardLead, type DashboardOriginPoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
 import { createClient } from "@/lib/supabase/server";
 
 type AppPageProps = { searchParams: Promise<{ error?: string; success?: string; q?: string; stage?: string; page?: string; tasks?: string }> };
@@ -30,6 +30,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let openRevenueInCents = 0;
   let leadsLast7Days = 0;
   let overdueFollowUpsCount = 0;
+  let evolutionData: DashboardEvolutionPoint[] = [];
+  let originData: DashboardOriginPoint[] = [];
 
   const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
   let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
@@ -83,6 +85,21 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).lt("follow_up_at", nowIso)
     );
 
+    // Séries agregadas dos gráficos (evolução diária + leads por origem).
+    // org_id/pipeline_id sempre vêm do contexto autenticado (membership,
+    // pipeline), nunca de input do usuário. As funções SQL revalidam
+    // org_id internamente via is_org_member (defesa em profundidade).
+    type EvolutionRow = { day: string; lead_count: number };
+    type OriginRow = { source: string; lead_count: number };
+
+    const evolutionPromise: Promise<{ data: EvolutionRow[] | null }> = Promise.resolve(
+      supabase.rpc("get_dashboard_leads_evolution", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id, p_days: 30 })
+    );
+
+    const originPromise: Promise<{ data: OriginRow[] | null }> = Promise.resolve(
+      supabase.rpc("get_dashboard_leads_by_source", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+    );
+
     const [
       { data: leadRows, count },
       { count: openCount },
@@ -90,6 +107,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       { data: openRevenueRows },
       { count: last7Count },
       { count: overdueCount },
+      { data: evolutionRows },
+      { data: originRows },
     ] = await Promise.all([
       Promise.resolve(leadQuery.order("created_at", { ascending: false }).range(from, from + PAGE_SIZE - 1)),
       openLeadsCountPromise,
@@ -97,6 +116,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       openRevenuePromise,
       last7DaysCountPromise,
       overdueCountPromise,
+      evolutionPromise,
+      originPromise,
     ]);
 
     totalCount = count ?? 0;
@@ -106,6 +127,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     openRevenueInCents = (openRevenueRows ?? []).reduce((sum, row) => sum + Number(row.value_in_cents), 0);
     leadsLast7Days = last7Count ?? 0;
     overdueFollowUpsCount = overdueCount ?? 0;
+    evolutionData = (evolutionRows ?? []).map((row) => ({ day: row.day, leadCount: Number(row.lead_count) }));
+    originData = (originRows ?? []).map((row) => ({ source: row.source, leadCount: Number(row.lead_count) }));
   }
 
   tasks = (taskRows ?? []).map((task) => {
@@ -120,5 +143,5 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} />;
+  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} evolutionData={evolutionData} originData={originData} />;
 }

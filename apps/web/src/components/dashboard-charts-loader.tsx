@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { DashboardChartsProps } from "./dashboard-charts";
 
 // next/dynamic com { ssr: false } só é permitido dentro de um Client
 // Component no App Router — por isso este wrapper existe separado de
@@ -18,6 +19,6 @@ const DashboardCharts = dynamic(() => import("./dashboard-charts").then((mod) =>
   )
 });
 
-export function DashboardChartsLoader() {
-  return <DashboardCharts />;
+export function DashboardChartsLoader(props: DashboardChartsProps) {
+  return <DashboardCharts {...props} />;
 }
