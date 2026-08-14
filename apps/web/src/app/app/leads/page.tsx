@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { LeadsPageClient } from "@/components/LeadsPageClient";
+import { NewLeadButton } from "@/components/NewLeadButton";
 import { type LeadRowData } from "@/components/LeadRow";
 import { createClient } from "@/lib/supabase/server";
 import "./page.css";
@@ -163,13 +164,26 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   // Calculate offset
   const offset = (page - 1) * pageSize;
 
-  // Fetch count, leads, stages and origins in parallel (independent queries —
-  // sequential awaits here were adding 4+ round-trips of latency per page load)
+  // Fetch count, leads, stages, origins and the org's pipeline in parallel
+  // (independent queries — sequential awaits here were adding round-trips of
+  // latency per page load)
+  type PipelineRow = { id: string };
+  const pipelinePromise: Promise<{ data: PipelineRow | null }> = Promise.resolve(
+    supabase
+      .from("pipelines")
+      .select("id")
+      .eq("org_id", orgId)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+  );
+
   const [
     { count: totalCount },
     { data: leadsData },
     { data: allStagesData },
-    { data: originsData }
+    { data: originsData },
+    { data: pipelineData }
   ] = await Promise.all([
     countQuery,
     leadsQuery
@@ -185,8 +199,30 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       .select("source")
       .eq("org_id", orgId)
       .is("deleted_at", null)
-      .is("source", "not.is.null")
+      .is("source", "not.is.null"),
+    pipelinePromise
   ]);
+
+  // Etapa inicial "aberta" (nem ganho, nem perdido) do pipeline da org, usada
+  // para o cadastro rápido de lead. pipelineId/firstStageId sempre vêm de
+  // queries filtradas por org_id — nunca de input do usuário.
+  let pipelineId: string | null = null;
+  let firstStageId: string | null = null;
+
+  if (pipelineData) {
+    pipelineId = pipelineData.id;
+    const { data: pipelineStagesData } = await supabase
+      .from("pipeline_stages")
+      .select("id, is_won, is_lost")
+      .eq("org_id", orgId)
+      .eq("pipeline_id", pipelineData.id)
+      .order("position", { ascending: true });
+
+    const firstOpenStage = (pipelineStagesData ?? []).find(
+      (stage) => !stage.is_won && !stage.is_lost
+    );
+    firstStageId = firstOpenStage?.id ?? null;
+  }
 
   const totalItems = totalCount || 0;
 
@@ -278,7 +314,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const successMessage = params.success
     ? {
         created: "Lead criado com sucesso.",
-        updated: "Lead atualizado com sucesso."
+        updated: "Lead atualizado com sucesso.",
+        lead_created: "Lead criado com sucesso."
       }[params.success]
     : undefined;
 
@@ -292,6 +329,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
               ? "Nenhum lead criado"
               : `${totalItems} ${totalItems === 1 ? "lead" : "leads"}`}
           </p>
+        </div>
+        <div className="leads-actions">
+          <NewLeadButton pipelineId={pipelineId} firstStageId={firstStageId} />
         </div>
       </div>
 
