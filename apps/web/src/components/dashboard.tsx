@@ -67,6 +67,7 @@ export function Dashboard({ userName, organizationName, pipelineId, pipelineName
         <nav aria-label="Navegação principal">
           <a className="active" href="#dashboard">▦ <span>Visão geral</span></a>
           <a href="#pipeline">◫ <span>Pipeline</span></a>
+          <Link href="/app/leads">☰ <span>Leads</span></Link>
           <a href="#new-lead">◎ <span>Novo lead</span></a>
           <Link href="/app/whatsapp">◌ <span>Conversas</span></Link>
           <a href="#relatorios">⌁ <span>Relatórios</span></a>
