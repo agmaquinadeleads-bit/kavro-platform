@@ -35,7 +35,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
 
   type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean };
   const stagesPromise: Promise<{ data: StageRow[] | null }> = pipeline
-    ? supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
+    ? Promise.resolve(supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true }))
     : Promise.resolve({ data: null });
 
   // Tasks are independent of the pipeline/stage/lead lookups below, so run them
