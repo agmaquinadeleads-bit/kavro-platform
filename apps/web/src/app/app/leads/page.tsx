@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { LeadsPageClient } from "@/components/LeadsPageClient";
 import { type LeadRowData } from "@/components/LeadRow";
 import { createClient } from "@/lib/supabase/server";
+import "./page.css";
 
 export const metadata = {
   title: "Leads | Kavro CRM"
@@ -16,12 +17,41 @@ type LeadsPageProps = {
     pageSize?: string;
     sortBy?: string;
     sortOrder?: string;
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    stage?: string;
+    origin?: string;
+    creative?: string;
   }>;
 };
 
 // Whitelist de colunas permitidas para sort (segurança contra SQL injection)
 const SORTABLE_COLUMNS = ["name", "email", "phone", "source", "stage_id", "value_in_cents", "owner_id", "created_at"];
 const VALID_PAGE_SIZES = [25, 50, 100];
+
+// Validação de filtros
+function validateDateFormat(dateStr: string | undefined): string | null {
+  if (!dateStr) return null;
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(dateStr)) return null;
+  const date = new Date(dateStr + "T00:00:00");
+  if (isNaN(date.getTime())) return null;
+  return dateStr;
+}
+
+function validateUUID(id: string | undefined): string | null {
+  if (!id) return null;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id) ? id : null;
+}
+
+function validateSearchString(search: string | undefined): string | null {
+  if (!search) return null;
+  const trimmed = search.trim();
+  if (trimmed.length === 0 || trimmed.length > 100) return null;
+  return trimmed;
+}
 
 const stageColorMap: Record<string, "gray" | "blue" | "amber" | "green" | "purple"> = {
   "gray": "gray",
@@ -55,6 +85,14 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     : "created_at";
   const sortOrder = (params.sortOrder === "asc" ? "asc" : "desc") as "asc" | "desc";
 
+  // Parse and validate filter parameters
+  const searchText = validateSearchString(params.search);
+  const dateFrom = validateDateFormat(params.dateFrom);
+  const dateTo = validateDateFormat(params.dateTo);
+  const stageId = validateUUID(params.stage);
+  const originText = params.origin ? params.origin.trim().substring(0, 120) : null;
+  const creativeId = validateUUID(params.creative);
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -75,24 +113,63 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
   const orgId = membership.org_id;
 
-  // Fetch total count for pagination
-  const { count: totalCount } = await supabase
+  // Build base query with filters
+  let countQuery = supabase
     .from("leads")
     .select("id", { count: "exact", head: true })
     .eq("org_id", orgId)
     .is("deleted_at", null);
 
+  let leadsQuery = supabase
+    .from("leads")
+    .select("id, name, email, phone, source, stage_id, owner_id, value_in_cents, created_at")
+    .eq("org_id", orgId)
+    .is("deleted_at", null);
+
+  // Apply search filter (name or email)
+  if (searchText) {
+    countQuery = countQuery.or(`name.ilike.%${searchText}%,email.ilike.%${searchText}%`);
+    leadsQuery = leadsQuery.or(`name.ilike.%${searchText}%,email.ilike.%${searchText}%`);
+  }
+
+  // Apply date filters
+  if (dateFrom) {
+    countQuery = countQuery.gte("created_at", `${dateFrom}T00:00:00Z`);
+    leadsQuery = leadsQuery.gte("created_at", `${dateFrom}T00:00:00Z`);
+  }
+
+  if (dateTo) {
+    countQuery = countQuery.lte("created_at", `${dateTo}T23:59:59Z`);
+    leadsQuery = leadsQuery.lte("created_at", `${dateTo}T23:59:59Z`);
+  }
+
+  // Apply stage filter
+  if (stageId) {
+    countQuery = countQuery.eq("stage_id", stageId);
+    leadsQuery = leadsQuery.eq("stage_id", stageId);
+  }
+
+  // Apply origin filter
+  if (originText) {
+    countQuery = countQuery.eq("source", originText);
+    leadsQuery = leadsQuery.eq("source", originText);
+  }
+
+  // Apply creative filter (if creatives table exists)
+  // NOTE: This assumes a future migration adds creative_id to leads table
+  if (creativeId) {
+    // Currently placeholder - will be implemented when creatives table is added
+  }
+
+  // Fetch total count for pagination
+  const { count: totalCount } = await countQuery;
   const totalItems = totalCount || 0;
 
   // Calculate offset
   const offset = (page - 1) * pageSize;
 
   // Fetch paginated and sorted leads for this organization
-  const { data: leadsData } = await supabase
-    .from("leads")
-    .select("id, name, email, phone, source, stage_id, owner_id, value_in_cents, created_at")
-    .eq("org_id", orgId)
-    .is("deleted_at", null)
+  const { data: leadsData } = await leadsQuery
     .order(sortBy, { ascending: sortOrder === "asc" })
     .range(offset, offset + pageSize - 1);
 
@@ -109,6 +186,44 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       { name: stage.name, position: stage.position }
     ])
   );
+
+  // Fetch all stages for filter dropdown
+  const { data: allStagesData } = await supabase
+    .from("pipeline_stages")
+    .select("id, name")
+    .eq("org_id", orgId)
+    .order("position", { ascending: true });
+
+  // Fetch all origins for filter dropdown
+  const { data: originsData } = await supabase
+    .from("leads")
+    .select("source")
+    .eq("org_id", orgId)
+    .is("deleted_at", null)
+    .is("source", "not.is.null")
+    .distinct();
+
+  const origins = Array.from(
+    new Set(
+      (originsData ?? [])
+        .map((row) => row.source)
+        .filter((s) => s !== null)
+    )
+  ).sort();
+
+  // Fetch creatives for filter dropdown (placeholder - will be populated when creatives table exists)
+  const creatives = [];
+
+  // Create maps for badge display
+  const stageNamesMap: Record<string, string> = {};
+  (allStagesData ?? []).forEach((stage) => {
+    stageNamesMap[stage.id] = stage.name;
+  });
+
+  const creativeNamesMap: Record<string, string> = {};
+  creatives.forEach((creative: any) => {
+    creativeNamesMap[creative.id] = creative.name;
+  });
 
   // Fetch owner information (members with their profiles)
   const ownerIds = [
@@ -210,105 +325,22 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           pageSize={pageSize}
           sortBy={sortBy}
           sortOrder={sortOrder}
+          filterData={{
+            searchText: searchText || "",
+            dateFrom,
+            dateTo,
+            selectedStage: stageId,
+            selectedOrigin: originText,
+            selectedCreative: creativeId,
+            stages: allStagesData ?? [],
+            origins,
+            creatives,
+            stageNamesMap,
+            creativeNamesMap
+          }}
         />
       </div>
 
-      <style jsx>{`
-        .leads-page {
-          padding: 28px;
-          display: grid;
-          gap: 24px;
-          min-width: 0;
-          overflow: visible;
-        }
-
-        .leads-header {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .leads-title-section {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .leads-title-section h1 {
-          font-size: 28px;
-          font-weight: 700;
-          color: var(--ink);
-          margin: 0;
-          line-height: 1.2;
-        }
-
-        .leads-subtitle {
-          font-size: 14px;
-          color: var(--muted);
-          margin: 0;
-        }
-
-        .leads-actions {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .btn-secondary {
-          padding: 10px 14px;
-          border-radius: 8px;
-          border: 1px solid var(--line);
-          background: var(--surface);
-          color: var(--ink);
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          text-decoration: none;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          transition: background-color 0.15s ease;
-        }
-
-        .btn-secondary:hover {
-          background: #f5f7f5;
-        }
-
-        .feedback {
-          padding: 12px 16px;
-          border-radius: 8px;
-          border-left: 4px solid transparent;
-          font-size: 14px;
-        }
-
-        .feedback.error {
-          background: #fff5f5;
-          border-left-color: #d45c5c;
-          color: #9b3c3c;
-        }
-
-        .feedback.success {
-          background: #f0fbf5;
-          border-left-color: #158a55;
-          color: #22764d;
-        }
-
-        .leads-table-container {
-          background: var(--surface);
-          border: 1px solid var(--line);
-          border-radius: 8px;
-          overflow: auto;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .leads-table-wrapper {
-          width: 100%;
-        }
-      `}</style>
     </main>
   );
 }
