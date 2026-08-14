@@ -8,8 +8,9 @@ import { FilterBar } from "./FilterBar";
 import { FilterBadges } from "./FilterBadges";
 import { BulkActions } from "./BulkActions";
 import { ConfirmModal } from "./ConfirmModal";
+import { LossReasonModal } from "./LossReasonModal";
 import { type LeadRowData } from "./LeadRow";
-import { deleteBulkLeads } from "@/app/app/actions";
+import { deleteBulkLeads, moveBulkLeadsToLoss } from "@/app/app/actions";
 
 interface Stage {
   id: string;
@@ -58,6 +59,7 @@ export function LeadsPageClient({
   const searchParams = useSearchParams();
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isLossModalOpen, setIsLossModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleHeaderClick = (columnKey: string) => {
@@ -117,30 +119,30 @@ export function LeadsPageClient({
   };
 
   const handleBulkDeleteClick = () => {
-    setIsDeleteConfirmOpen(true);
+    setIsLossModalOpen(true);
   };
 
   const handleBulkDeleteCancel = () => {
-    setIsDeleteConfirmOpen(false);
+    setIsLossModalOpen(false);
   };
 
-  const handleBulkDeleteConfirm = async () => {
+  const handleMoveBulkLeadsToLoss = async (reason: string) => {
     setIsDeleting(true);
     try {
       const leadIds = Array.from(selectedLeadIds);
-      const result = await deleteBulkLeads(leadIds);
+      const result = await moveBulkLeadsToLoss(leadIds, reason);
 
       if (result.success) {
         setSelectedLeadIds(new Set());
-        setIsDeleteConfirmOpen(false);
+        setIsLossModalOpen(false);
         router.refresh();
         // Optional: Show success toast
-        // toast.success(`${result.count} leads deletados`);
+        // toast.success(`${result.count} leads movidos para Perdidos`);
       }
     } catch (error) {
-      console.error("Erro ao deletar leads:", error);
+      console.error("Erro ao mover leads para Perdidos:", error);
       // Optional: Show error toast
-      // toast.error("Erro ao deletar leads");
+      // toast.error("Erro ao mover leads para Perdidos");
     } finally {
       setIsDeleting(false);
     }
@@ -215,14 +217,10 @@ export function LeadsPageClient({
         isDeleting={isDeleting}
       />
 
-      <ConfirmModal
-        isOpen={isDeleteConfirmOpen}
-        title="Deletar leads?"
-        message={`Tem certeza que quer deletar ${selectedLeadIds.size} lead${selectedLeadIds.size !== 1 ? "s" : ""}? Esta ação não pode ser desfeita.`}
-        confirmText="Deletar"
-        cancelText="Cancelar"
-        isDangerous={true}
-        onConfirm={handleBulkDeleteConfirm}
+      <LossReasonModal
+        isOpen={isLossModalOpen}
+        selectedLeadIds={selectedLeadIds}
+        onConfirm={handleMoveBulkLeadsToLoss}
         onCancel={handleBulkDeleteCancel}
         isLoading={isDeleting}
       />

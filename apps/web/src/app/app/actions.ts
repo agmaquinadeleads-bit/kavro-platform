@@ -368,3 +368,51 @@ export async function deleteBulkLeads(leadIds: string[]) {
 
   return { success: true, count: data?.length ?? 0 };
 }
+
+const moveBulkLeadsToLossSchema = z.object({
+  leadIds: z.array(uuidSchema).min(1).max(1000),
+  reason: z.enum(["no_budget", "competitor", "gave_up", "no_contact", "other", "duplicate"])
+});
+
+export async function moveBulkLeadsToLoss(leadIds: string[], reason: string) {
+  const input = moveBulkLeadsToLossSchema.safeParse({ leadIds, reason });
+  if (!input.success) {
+    return { success: false, count: 0, error: "invalid_input" };
+  }
+
+  const { supabase, orgId } = await authenticatedContext();
+
+  // Find the "Loss" stage (or similar)
+  const { data: lossStage, error: stageError } = await supabase
+    .from("pipeline_stages")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("is_lost", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (stageError || !lossStage) {
+    return { success: false, count: 0, error: "loss_stage_not_found" };
+  }
+
+  // Update leads to move them to Loss stage
+  const { data, error } = await supabase
+    .from("leads")
+    .update({
+      stage_id: lossStage.id,
+      loss_reason: input.data.reason,
+      status: "lost"
+    })
+    .in("id", input.data.leadIds)
+    .eq("org_id", orgId)
+    .select("id");
+
+  if (error) {
+    return { success: false, count: 0, error: "update_failed" };
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/leads");
+
+  return { success: true, count: data?.length ?? 0, reason: input.data.reason };
+}
