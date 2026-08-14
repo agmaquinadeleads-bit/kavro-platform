@@ -18,12 +18,21 @@ export interface LeadRowData {
 
 interface LeadRowProps {
   lead: LeadRowData;
+  isSelected?: boolean;
+  onSelectChange?: (leadId: string, isSelected: boolean) => void;
 }
 
-export function LeadRow({ lead }: LeadRowProps) {
-  const handleClick = () => {
+export function LeadRow({ lead, isSelected = false, onSelectChange }: LeadRowProps) {
+  const handleRowClick = () => {
     // Navigate to lead detail page
     window.location.href = `/app/leads/${lead.id}`;
+  };
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (onSelectChange) {
+      onSelectChange(lead.id, e.currentTarget.checked);
+    }
   };
 
   const formatBRL = (valueInCents: number): string => {
@@ -90,24 +99,52 @@ export function LeadRow({ lead }: LeadRowProps) {
   };
 
   // Wrap entire row in a Link styled as a table row
+  const rowBgColor = isSelected ? "rgba(37, 99, 235, 0.08)" : "transparent";
+
   return (
     <tr
       style={{
         borderBottom: "1px solid var(--line)",
         height: "44px",
         cursor: "pointer",
-        transition: "background-color 0.15s ease"
+        transition: "background-color 0.15s ease",
+        backgroundColor: rowBgColor
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-          "#f5f7f5";
+        if (!isSelected) {
+          (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
+            "#f5f7f5";
+        }
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-          "transparent";
+          rowBgColor;
       }}
-      onClick={handleClick}
+      onClick={handleRowClick}
     >
+      <td
+        style={{
+          padding: "12px",
+          fontSize: "14px",
+          fontWeight: 400,
+          color: "var(--ink)",
+          width: "40px",
+          textAlign: "center"
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={handleCheckboxChange}
+          style={{
+            width: "16px",
+            height: "16px",
+            cursor: "pointer",
+            accentColor: "var(--primary)"
+          }}
+        />
+      </td>
       <td
         style={{
           padding: "12px",

@@ -1,9 +1,39 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LeadsTable } from "./LeadsTable";
 import { PaginationControls } from "./PaginationControls";
+import { FilterBar } from "./FilterBar";
+import { FilterBadges } from "./FilterBadges";
+import { BulkActions } from "./BulkActions";
+import { ConfirmModal } from "./ConfirmModal";
 import { type LeadRowData } from "./LeadRow";
+import { deleteBulkLeads } from "@/app/app/actions";
+
+interface Stage {
+  id: string;
+  name: string;
+}
+
+interface Creative {
+  id: string;
+  name: string;
+}
+
+interface FilterData {
+  searchText: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  selectedStage: string | null;
+  selectedOrigin: string | null;
+  selectedCreative: string | null;
+  stages: Stage[];
+  origins: string[];
+  creatives: Creative[];
+  stageNamesMap: Record<string, string>;
+  creativeNamesMap: Record<string, string>;
+}
 
 interface LeadsPageClientProps {
   leads: LeadRowData[];
@@ -12,6 +42,7 @@ interface LeadsPageClientProps {
   pageSize: number;
   sortBy: string;
   sortOrder: "asc" | "desc";
+  filterData?: FilterData;
 }
 
 export function LeadsPageClient({
@@ -20,10 +51,14 @@ export function LeadsPageClient({
   currentPage,
   pageSize,
   sortBy,
-  sortOrder
+  sortOrder,
+  filterData
 }: LeadsPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleHeaderClick = (columnKey: string) => {
     // If clicking the same column, toggle sort order
@@ -62,29 +97,135 @@ export function LeadsPageClient({
     router.push(`?${params.toString()}`);
   };
 
+  const handleSelectChange = (leadId: string, isSelected: boolean) => {
+    const newSelection = new Set(selectedLeadIds);
+    if (isSelected) {
+      newSelection.add(leadId);
+    } else {
+      newSelection.delete(leadId);
+    }
+    setSelectedLeadIds(newSelection);
+  };
+
+  const handleSelectAll = (selectAll: boolean) => {
+    if (selectAll) {
+      const newSelection = new Set(leads.map((lead) => lead.id));
+      setSelectedLeadIds(newSelection);
+    } else {
+      setSelectedLeadIds(new Set());
+    }
+  };
+
+  const handleBulkDeleteClick = () => {
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleBulkDeleteCancel = () => {
+    setIsDeleteConfirmOpen(false);
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      const leadIds = Array.from(selectedLeadIds);
+      const result = await deleteBulkLeads(leadIds);
+
+      if (result.success) {
+        setSelectedLeadIds(new Set());
+        setIsDeleteConfirmOpen(false);
+        router.refresh();
+        // Optional: Show success toast
+        // toast.success(`${result.count} leads deletados`);
+      }
+    } catch (error) {
+      console.error("Erro ao deletar leads:", error);
+      // Optional: Show error toast
+      // toast.error("Erro ao deletar leads");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelSelection = () => {
+    setSelectedLeadIds(new Set());
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-      <div style={{ flex: 1, overflow: "auto" }}>
-        <LeadsTable
-          leads={leads}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onHeaderClick={handleHeaderClick}
-        />
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {filterData && (
+          <>
+            <FilterBar
+              searchText={filterData.searchText}
+              dateFrom={filterData.dateFrom}
+              dateTo={filterData.dateTo}
+              selectedStage={filterData.selectedStage}
+              selectedOrigin={filterData.selectedOrigin}
+              selectedCreative={filterData.selectedCreative}
+              stages={filterData.stages}
+              origins={filterData.origins}
+              creatives={filterData.creatives}
+            />
+            <FilterBadges
+              filters={{
+                search: filterData.searchText,
+                dateFrom: filterData.dateFrom,
+                dateTo: filterData.dateTo,
+                stage: filterData.selectedStage,
+                origin: filterData.selectedOrigin,
+                creative: filterData.selectedCreative,
+                stageNames: filterData.stageNamesMap,
+                creativeNames: filterData.creativeNamesMap
+              }}
+            />
+          </>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <LeadsTable
+              leads={leads}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onHeaderClick={handleHeaderClick}
+              selectedLeadIds={selectedLeadIds}
+              onSelectChange={handleSelectChange}
+              onSelectAllChange={handleSelectAll}
+            />
+          </div>
+          <div style={{
+            borderTop: "1px solid var(--line)",
+            padding: "12px 16px",
+            backgroundColor: "var(--surface)"
+          }}>
+            <PaginationControls
+              totalItems={totalItems}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
+        </div>
       </div>
-      <div style={{
-        borderTop: "1px solid var(--line)",
-        padding: "12px 16px",
-        backgroundColor: "var(--surface)"
-      }}>
-        <PaginationControls
-          totalItems={totalItems}
-          currentPage={currentPage}
-          pageSize={pageSize}
-          onPageChange={handlePageChange}
-          onPageSizeChange={handlePageSizeChange}
-        />
-      </div>
-    </div>
+
+      <BulkActions
+        selectedCount={selectedLeadIds.size}
+        onDelete={handleBulkDeleteClick}
+        onCancel={handleCancelSelection}
+        isDeleting={isDeleting}
+      />
+
+      <ConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        title="Deletar leads?"
+        message={`Tem certeza que quer deletar ${selectedLeadIds.size} lead${selectedLeadIds.size !== 1 ? "s" : ""}? Esta ação não pode ser desfeita.`}
+        confirmText="Deletar"
+        cancelText="Cancelar"
+        isDangerous={true}
+        onConfirm={handleBulkDeleteConfirm}
+        onCancel={handleBulkDeleteCancel}
+        isLoading={isDeleting}
+      />
+    </>
   );
 }

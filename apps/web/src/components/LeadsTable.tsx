@@ -8,9 +8,20 @@ interface LeadsTableProps {
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   onHeaderClick?: (columnKey: string) => void;
+  selectedLeadIds?: Set<string>;
+  onSelectChange?: (leadId: string, isSelected: boolean) => void;
+  onSelectAllChange?: (selectAll: boolean) => void;
 }
 
-export function LeadsTable({ leads, sortBy = "created_at", sortOrder = "desc", onHeaderClick }: LeadsTableProps) {
+export function LeadsTable({
+  leads,
+  sortBy = "created_at",
+  sortOrder = "desc",
+  onHeaderClick,
+  selectedLeadIds = new Set(),
+  onSelectChange,
+  onSelectAllChange
+}: LeadsTableProps) {
   const tableStyle: CSSProperties = {
     width: "100%",
     borderCollapse: "collapse",
@@ -111,6 +122,35 @@ export function LeadsTable({ leads, sortBy = "created_at", sortOrder = "desc", o
         <thead style={theadStyle}>
           <tr>
             <th
+              style={{ ...thStyle, width: "40px", textAlign: "center", cursor: "pointer" }}
+              onClick={() => {
+                if (onSelectAllChange) {
+                  const isAllSelected = selectedLeadIds.size === leads.length;
+                  onSelectAllChange(!isAllSelected);
+                }
+              }}
+              onMouseEnter={handleHeaderHoverEnter}
+              onMouseLeave={handleHeaderHoverLeave}
+            >
+              <input
+                type="checkbox"
+                checked={selectedLeadIds.size === leads.length && leads.length > 0}
+                onChange={(e) => {
+                  if (onSelectAllChange) {
+                    onSelectAllChange(e.currentTarget.checked);
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  cursor: "pointer",
+                  accentColor: "var(--primary)"
+                }}
+                title="Selecionar todos"
+              />
+            </th>
+            <th
               style={thStyle}
               onClick={() => handleHeaderClick("name")}
               onMouseEnter={handleHeaderHoverEnter}
@@ -202,7 +242,12 @@ export function LeadsTable({ leads, sortBy = "created_at", sortOrder = "desc", o
         </thead>
         <tbody>
           {leads.map((lead) => (
-            <LeadRow key={lead.id} lead={lead} />
+            <LeadRow
+              key={lead.id}
+              lead={lead}
+              isSelected={selectedLeadIds.has(lead.id)}
+              onSelectChange={onSelectChange}
+            />
           ))}
         </tbody>
       </table>

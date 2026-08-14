@@ -339,3 +339,32 @@ export async function assignLead(formData: FormData) {
   revalidatePath("/app"); revalidatePath(`/app/leads/${input.data.leadId}`);
   redirect(`/app/leads/${input.data.leadId}?success=lead_assigned`);
 }
+
+const deleteBulkLeadsSchema = z.object({
+  leadIds: z.array(uuidSchema).min(1).max(1000)
+});
+
+export async function deleteBulkLeads(leadIds: string[]) {
+  const input = deleteBulkLeadsSchema.safeParse({ leadIds });
+  if (!input.success) {
+    return { success: false, count: 0, error: "invalid_leads" };
+  }
+
+  const { supabase, orgId } = await authenticatedContext();
+
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", input.data.leadIds)
+    .eq("org_id", orgId)
+    .select("id");
+
+  if (error) {
+    return { success: false, count: 0, error: "delete_failed" };
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/leads");
+
+  return { success: true, count: data?.length ?? 0 };
+}
