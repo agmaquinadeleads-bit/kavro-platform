@@ -44,7 +44,7 @@ export async function createLead(formData: FormData) {
     pipelineId: formData.get("pipeline_id"),
     stageId: formData.get("stage_id")
   });
-  if (!input.success) redirect("/app?error=invalid_lead");
+  if (!input.success) redirect("/app/leads?error=invalid_lead");
 
   const { supabase, user, orgId } = await authenticatedContext();
   const { error } = await supabase.from("leads").insert({
@@ -59,9 +59,10 @@ export async function createLead(formData: FormData) {
     value_in_cents: Math.round(input.data.value * 100)
   });
 
-  if (error) redirect("/app?error=create_failed");
+  if (error) redirect("/app/leads?error=create_failed");
   revalidatePath("/app");
-  redirect("/app?success=lead_created");
+  revalidatePath("/app/leads");
+  redirect("/app/leads?success=lead_created");
 }
 
 const moveLeadSchema = z.object({
@@ -78,7 +79,7 @@ export async function moveLead(formData: FormData) {
     version: formData.get("version"),
     lossReason: formData.get("loss_reason") ?? ""
   });
-  if (!input.success) redirect("/app?error=invalid_move");
+  if (!input.success) redirect("/app/pipeline?error=invalid_move");
 
   const { supabase, orgId } = await authenticatedContext();
   const { data, error } = await supabase
@@ -89,10 +90,11 @@ export async function moveLead(formData: FormData) {
     .eq("version", input.data.version)
     .select("id");
 
-  if (error) redirect("/app?error=move_failed");
-  if (!data?.length) redirect("/app?error=stale_lead");
+  if (error) redirect("/app/pipeline?error=move_failed");
+  if (!data?.length) redirect("/app/pipeline?error=stale_lead");
   revalidatePath("/app");
-  redirect("/app?success=lead_moved");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=lead_moved");
 }
 
 const archiveLeadSchema = z.object({
@@ -105,7 +107,7 @@ export async function archiveLead(formData: FormData) {
     leadId: formData.get("lead_id"),
     version: formData.get("version")
   });
-  if (!input.success) redirect("/app?error=invalid_archive");
+  if (!input.success) redirect("/app/pipeline?error=invalid_archive");
 
   const { supabase, orgId } = await authenticatedContext();
   const { data, error } = await supabase
@@ -116,10 +118,11 @@ export async function archiveLead(formData: FormData) {
     .eq("version", input.data.version)
     .select("id");
 
-  if (error) redirect("/app?error=archive_failed");
-  if (!data?.length) redirect("/app?error=stale_lead");
+  if (error) redirect("/app/pipeline?error=archive_failed");
+  if (!data?.length) redirect("/app/pipeline?error=stale_lead");
   revalidatePath("/app");
-  redirect("/app?success=lead_archived");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=lead_archived");
 }
 
 const updateLeadSchema = z.object({
@@ -182,37 +185,39 @@ const stageSchema = z.object({
 
 export async function createStage(formData: FormData) {
   const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind") });
-  if (!input.success) redirect("/app?error=invalid_stage");
+  if (!input.success) redirect("/app/pipeline?error=invalid_stage");
 
   const { supabase, orgId, role } = await authenticatedContext();
-  if (role !== "owner" && role !== "admin") redirect("/app?error=forbidden");
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
 
   const { data: pipeline } = await supabase.from("pipelines").select("id").eq("org_id", orgId).order("position").limit(1).maybeSingle();
-  if (!pipeline) redirect("/app?error=pipeline_missing");
+  if (!pipeline) redirect("/app/pipeline?error=pipeline_missing");
 
   const { data: existingStages } = await supabase.from("pipeline_stages").select("position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: false });
-  if ((existingStages?.length ?? 0) >= 30) redirect("/app?error=stage_limit");
-  if (input.data.kind === "won" && existingStages?.some((stage) => stage.is_won)) redirect("/app?error=stage_kind_exists");
-  if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect("/app?error=stage_kind_exists");
+  if ((existingStages?.length ?? 0) >= 30) redirect("/app/pipeline?error=stage_limit");
+  if (input.data.kind === "won" && existingStages?.some((stage) => stage.is_won)) redirect("/app/pipeline?error=stage_kind_exists");
+  if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect("/app/pipeline?error=stage_kind_exists");
 
   const position = (existingStages?.[0]?.position ?? -1) + 1;
   const { error } = await supabase.from("pipeline_stages").insert({ org_id: orgId, pipeline_id: pipeline.id, name: input.data.name, position, is_won: input.data.kind === "won", is_lost: input.data.kind === "lost" });
-  if (error) redirect("/app?error=stage_create_failed");
+  if (error) redirect("/app/pipeline?error=stage_create_failed");
   revalidatePath("/app");
-  redirect("/app?success=stage_created");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=stage_created");
 }
 
 const renameStageSchema = z.object({ stageId: uuidSchema, name: z.string().trim().min(1).max(100) });
 
 export async function renameStage(formData: FormData) {
   const input = renameStageSchema.safeParse({ stageId: formData.get("stage_id"), name: formData.get("name") });
-  if (!input.success) redirect("/app?error=invalid_stage");
+  if (!input.success) redirect("/app/pipeline?error=invalid_stage");
   const { supabase, orgId, role } = await authenticatedContext();
-  if (role !== "owner" && role !== "admin") redirect("/app?error=forbidden");
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
   const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id");
-  if (error || !data?.length) redirect("/app?error=stage_update_failed");
+  if (error || !data?.length) redirect("/app/pipeline?error=stage_update_failed");
   revalidatePath("/app");
-  redirect("/app?success=stage_renamed");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=stage_renamed");
 }
 
 const createTaskSchema = z.object({

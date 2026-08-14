@@ -1,17 +1,13 @@
 import { redirect } from "next/navigation";
-import { Dashboard, type DashboardEvolutionPoint, type DashboardLead, type DashboardOriginPoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
+import { Dashboard, type DashboardEvolutionPoint, type DashboardOriginPoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
 import { createClient } from "@/lib/supabase/server";
 
-type AppPageProps = { searchParams: Promise<{ error?: string; success?: string; q?: string; stage?: string; page?: string; tasks?: string }> };
-const PAGE_SIZE = 25;
+type AppPageProps = { searchParams: Promise<{ error?: string; success?: string; tasks?: string }> };
 const errorMessages: Record<string, string> = { invalid_lead: "Revise os dados do lead.", create_failed: "Não foi possível criar o lead.", invalid_move: "A movimentação solicitada é inválida.", move_failed: "Não foi possível mover o lead. Para a etapa Perdido, informe o motivo.", invalid_archive: "Não foi possível identificar o lead.", archive_failed: "Não foi possível arquivar o lead.", stale_lead: "Esse lead foi alterado em outra sessão. A tela foi atualizada.", invalid_stage: "Revise os dados da etapa.", forbidden: "Seu perfil não pode alterar o pipeline.", pipeline_missing: "Pipeline não encontrado.", stage_limit: "O pipeline atingiu o limite de etapas.", stage_kind_exists: "Já existe uma etapa desse tipo especial.", stage_create_failed: "Não foi possível criar a etapa.", stage_update_failed: "Não foi possível renomear a etapa." };
 const successMessages: Record<string, string> = { lead_created: "Lead adicionado ao pipeline.", lead_moved: "Lead movido com sucesso.", lead_archived: "Lead arquivado com sucesso.", stage_created: "Etapa criada com sucesso.", stage_renamed: "Etapa renomeada com sucesso.", invitation_accepted: "Convite aceito. Você já faz parte da equipe." };
 
 export default async function AppPage({ searchParams }: AppPageProps) {
   const params = await searchParams;
-  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
-  const search = (params.q ?? "").trim().slice(0, 80);
-  const safeSearch = search.replace(/[%_,().]/g, "");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -22,7 +18,6 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", membership.org_id).order("position", { ascending: true }).limit(1).maybeSingle();
 
   let stages: DashboardStage[] = [];
-  let leads: DashboardLead[] = [];
   let totalCount = 0;
   let tasks: DashboardTask[] = [];
   let openLeadsCount = 0;
@@ -30,6 +25,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let openRevenueInCents = 0;
   let leadsLast7Days = 0;
   let overdueFollowUpsCount = 0;
+  let todayFollowUpsCount = 0;
   let evolutionData: DashboardEvolutionPoint[] = [];
   let originData: DashboardOriginPoint[] = [];
 
@@ -49,21 +45,25 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   if (pipeline) {
     stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost }));
 
-    let leadQuery = supabase.from("leads").select("id, name, email, phone, source, stage_id, value_in_cents, version, follow_up_at, created_at", { count: "exact" }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null);
-    if (safeSearch) leadQuery = leadQuery.or(`name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,source.ilike.%${safeSearch}%`);
-    if (params.stage && stages.some((stage) => stage.id === params.stage)) leadQuery = leadQuery.eq("stage_id", params.stage);
-    const from = (requestedPage - 1) * PAGE_SIZE;
-
-    // KPI queries below are org+pipeline scoped counts/aggregates, not limited to the
-    // current page — they replace the earlier page-local "Fechados"/"Receita no funil"
-    // numbers, which were wrong (only reflected the 25 leads on screen).
+    // KPI queries below are org+pipeline scoped counts/aggregates — the dashboard
+    // no longer renders a paginated lead list (moved to /app/leads e /app/pipeline),
+    // so every metric here comes straight from a count/aggregate query.
     const openStageIds: string[] = stages.filter((stage) => !stage.isWon && !stage.isLost).map((stage) => stage.id);
     const wonStageIds: string[] = stages.filter((stage) => stage.isWon).map((stage) => stage.id);
     const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const nowIso = new Date().toISOString();
+    // Limites do "dia de hoje" no fuso de São Paulo (sem DST desde 2019, UTC-3 fixo),
+    // usados só para o alerta de follow-ups de hoje.
+    const saoPauloDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+    const todayStartIso = new Date(`${saoPauloDay}T00:00:00-03:00`).toISOString();
+    const todayEndIso = new Date(`${saoPauloDay}T23:59:59.999-03:00`).toISOString();
 
     type CountResult = { count: number | null };
     type ValueRows = { data: { value_in_cents: number }[] | null };
+
+    const totalCountPromise: Promise<CountResult> = Promise.resolve(
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null)
+    );
 
     const openLeadsCountPromise: Promise<CountResult> = openStageIds.length
       ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
@@ -85,6 +85,10 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).lt("follow_up_at", nowIso)
     );
 
+    const todayCountPromise: Promise<CountResult> = Promise.resolve(
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("follow_up_at", todayStartIso).lte("follow_up_at", todayEndIso)
+    );
+
     // Séries agregadas dos gráficos (evolução diária + leads por origem).
     // org_id/pipeline_id sempre vêm do contexto autenticado (membership,
     // pipeline), nunca de input do usuário. As funções SQL revalidam
@@ -101,32 +105,34 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     );
 
     const [
-      { data: leadRows, count },
+      { count: totalLeadsCount },
       { count: openCount },
       { count: wonCount },
       { data: openRevenueRows },
       { count: last7Count },
       { count: overdueCount },
+      { count: todayCount },
       { data: evolutionRows },
       { data: originRows },
     ] = await Promise.all([
-      Promise.resolve(leadQuery.order("created_at", { ascending: false }).range(from, from + PAGE_SIZE - 1)),
+      totalCountPromise,
       openLeadsCountPromise,
       wonLeadsCountPromise,
       openRevenuePromise,
       last7DaysCountPromise,
       overdueCountPromise,
+      todayCountPromise,
       evolutionPromise,
       originPromise,
     ]);
 
-    totalCount = count ?? 0;
-    leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at }));
+    totalCount = totalLeadsCount ?? 0;
     openLeadsCount = openCount ?? 0;
     wonLeadsCount = wonCount ?? 0;
     openRevenueInCents = (openRevenueRows ?? []).reduce((sum, row) => sum + Number(row.value_in_cents), 0);
     leadsLast7Days = last7Count ?? 0;
     overdueFollowUpsCount = overdueCount ?? 0;
+    todayFollowUpsCount = todayCount ?? 0;
     evolutionData = (evolutionRows ?? []).map((row) => ({ day: row.day, leadCount: Number(row.lead_count) }));
     originData = (originRows ?? []).map((row) => ({ source: row.source, leadCount: Number(row.lead_count) }));
   }
@@ -141,7 +147,6 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const errorMessage = params.error ? errorMessages[params.error] : undefined;
   const successMessage = params.success ? successMessages[params.success] : undefined;
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} evolutionData={evolutionData} originData={originData} />;
+  return <Dashboard userName={userName} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} todayFollowUpsCount={todayFollowUpsCount} evolutionData={evolutionData} originData={originData} />;
 }

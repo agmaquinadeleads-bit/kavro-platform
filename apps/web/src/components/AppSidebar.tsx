@@ -18,11 +18,18 @@ function initials(name: string) {
 export function AppSidebar({ userName, organizationName, canSeeTeamTasks }: AppSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("kavro-sidebar-collapsed");
     if (stored === "1") setCollapsed(true);
   }, []);
+
+  // Fecha o drawer mobile automaticamente sempre que a rota muda (ex.: após
+  // clicar em um link de navegação), evitando que o menu fique aberto por cima do conteúdo.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const toggleCollapsed = () => {
     setCollapsed((current) => {
@@ -33,33 +40,45 @@ export function AppSidebar({ userName, organizationName, canSeeTeamTasks }: AppS
   };
 
   const isActive = (href: string) => pathname === href;
+  const closeMobileMenu = () => setMobileOpen(false);
 
   return (
-    <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}`}>
-      <div className="sidebar-top">
-        <div className="brand"><span>K</span>{!collapsed ? "Kavro" : null}</div>
-        <button
-          type="button"
-          className="sidebar-toggle"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          title={collapsed ? "Expandir menu" : "Recolher menu"}
-        >
-          {collapsed ? "»" : "«"}
-        </button>
-      </div>
-      <nav aria-label="Navegação principal">
-        <Link className={isActive("/app") ? "active" : ""} href="/app">▦ <span>Visão geral</span></Link>
-        <Link href="/app#pipeline">◫ <span>Pipeline</span></Link>
-        <Link className={isActive("/app/leads") ? "active" : ""} href="/app/leads">☰ <span>Leads</span></Link>
-        <Link href="/app#new-lead">◎ <span>Novo lead</span></Link>
-        <Link className={isActive("/app/whatsapp") ? "active" : ""} href="/app/whatsapp">◌ <span>Conversas</span></Link>
-      </nav>
-      <div className="sidebar-footer">
-        {canSeeTeamTasks ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team">♙ <span>Equipe</span></Link> : null}
-        <div className="profile"><span>{initials(userName)}</span>{!collapsed ? <div><strong>{userName}</strong><small>{organizationName}</small></div> : null}</div>
-        <form action={logout}><button className="logout-button" type="submit">{collapsed ? "⏻" : "Sair da conta"}</button></form>
-      </div>
-    </aside>
+    <>
+      <button
+        type="button"
+        className="mobile-menu-toggle"
+        onClick={() => setMobileOpen((current) => !current)}
+        aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+        aria-expanded={mobileOpen}
+      >
+        {mobileOpen ? "✕" : "☰"}
+      </button>
+      {mobileOpen ? <div className="sidebar-overlay" onClick={closeMobileMenu} aria-hidden="true" /> : null}
+      <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-mobile-open" : ""}`}>
+        <div className="sidebar-top">
+          <div className="brand"><span>K</span>{!collapsed ? "Kavro" : null}</div>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            title={collapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            {collapsed ? "»" : "«"}
+          </button>
+        </div>
+        <nav aria-label="Navegação principal">
+          <Link className={isActive("/app") ? "active" : ""} href="/app" onClick={closeMobileMenu}>▦ <span>Visão geral</span></Link>
+          <Link className={isActive("/app/pipeline") ? "active" : ""} href="/app/pipeline" onClick={closeMobileMenu}>◫ <span>Pipeline</span></Link>
+          <Link className={isActive("/app/leads") ? "active" : ""} href="/app/leads" onClick={closeMobileMenu}>☰ <span>Leads</span></Link>
+          <Link className={isActive("/app/whatsapp") ? "active" : ""} href="/app/whatsapp" onClick={closeMobileMenu}>◌ <span>Conversas</span></Link>
+        </nav>
+        <div className="sidebar-footer">
+          {canSeeTeamTasks ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team" onClick={closeMobileMenu}>♙ <span>Equipe</span></Link> : null}
+          <div className="profile"><span>{initials(userName)}</span>{!collapsed ? <div><strong>{userName}</strong><small>{organizationName}</small></div> : null}</div>
+          <form action={logout}><button className="logout-button" type="submit">{collapsed ? "⏻" : "Sair da conta"}</button></form>
+        </div>
+      </aside>
+    </>
   );
 }
