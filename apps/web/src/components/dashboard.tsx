@@ -21,6 +21,11 @@ type DashboardProps = {
   totalPages: number;
   filters: { search: string; stageId: string };
   feedback?: { kind: "error" | "success"; message: string };
+  openLeadsCount: number;
+  wonLeadsCount: number;
+  openRevenueInCents: number;
+  leadsLast7Days: number;
+  overdueFollowUpsCount: number;
 };
 
 function currency(valueInCents: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100); }
@@ -44,18 +49,22 @@ function taskDueState(value: string | null) {
   return { kind: "future", label: new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date) };
 }
 
-export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback }: DashboardProps) {
-  const openLeads = leads.filter((lead) => { const stage = stages.find((item) => item.id === lead.stageId); return !stage?.isWon && !stage?.isLost; });
-  const wonLeads = leads.filter((lead) => stages.find((stage) => stage.id === lead.stageId)?.isWon);
-  const totalValue = openLeads.reduce((sum, lead) => sum + lead.valueInCents, 0);
+export function Dashboard({ userName, pipelineId, pipelineName, stages, leads, tasks, taskScope, canSeeTeamTasks, totalCount, currentPage, totalPages, filters, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount }: DashboardProps) {
   const overdueCount = leads.filter((lead) => followUpState(lead.followUpAt)?.kind === "overdue").length;
   const todayCount = leads.filter((lead) => followUpState(lead.followUpAt)?.kind === "today").length;
   const firstStage = stages.find((stage) => !stage.isWon && !stage.isLost);
+  const closedTotal = openLeadsCount + wonLeadsCount;
+  const conversionRate = closedTotal > 0 ? Math.round((wonLeadsCount / closedTotal) * 100) : 0;
+  const averageTicketInCents = openLeadsCount > 0 ? Math.round(openRevenueInCents / openLeadsCount) : 0;
   const metrics = [
     { label: "Total de leads", value: String(totalCount), detail: "resultado dos filtros" },
-    { label: "Nesta página", value: String(leads.length), detail: "até 25 por página" },
-    { label: "Fechados", value: String(wonLeads.length), detail: "negócios ganhos" },
-    { label: "Receita no funil", value: currency(totalValue), detail: "valor em aberto" }
+    { label: "Leads abertos", value: String(openLeadsCount), detail: "em andamento no funil" },
+    { label: "Fechados (ganhos)", value: String(wonLeadsCount), detail: "negócios ganhos" },
+    { label: "Taxa de conversão", value: `${conversionRate}%`, detail: "ganhos / (abertos + ganhos)" },
+    { label: "Receita no funil", value: currency(openRevenueInCents), detail: "valor em aberto" },
+    { label: "Ticket médio", value: currency(averageTicketInCents), detail: "por lead em aberto" },
+    { label: "Follow-ups vencidos", value: String(overdueFollowUpsCount), detail: "no pipeline inteiro" },
+    { label: "Leads últimos 7 dias", value: String(leadsLast7Days), detail: "novos cadastros" }
   ];
 
   return (

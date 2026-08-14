@@ -25,6 +25,11 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let leads: DashboardLead[] = [];
   let totalCount = 0;
   let tasks: DashboardTask[] = [];
+  let openLeadsCount = 0;
+  let wonLeadsCount = 0;
+  let openRevenueInCents = 0;
+  let leadsLast7Days = 0;
+  let overdueFollowUpsCount = 0;
 
   const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
   let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
@@ -46,9 +51,61 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     if (safeSearch) leadQuery = leadQuery.or(`name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,source.ilike.%${safeSearch}%`);
     if (params.stage && stages.some((stage) => stage.id === params.stage)) leadQuery = leadQuery.eq("stage_id", params.stage);
     const from = (requestedPage - 1) * PAGE_SIZE;
-    const { data: leadRows, count } = await leadQuery.order("created_at", { ascending: false }).range(from, from + PAGE_SIZE - 1);
+
+    // KPI queries below are org+pipeline scoped counts/aggregates, not limited to the
+    // current page — they replace the earlier page-local "Fechados"/"Receita no funil"
+    // numbers, which were wrong (only reflected the 25 leads on screen).
+    const openStageIds: string[] = stages.filter((stage) => !stage.isWon && !stage.isLost).map((stage) => stage.id);
+    const wonStageIds: string[] = stages.filter((stage) => stage.isWon).map((stage) => stage.id);
+    const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const nowIso = new Date().toISOString();
+
+    type CountResult = { count: number | null };
+    type ValueRows = { data: { value_in_cents: number }[] | null };
+
+    const openLeadsCountPromise: Promise<CountResult> = openStageIds.length
+      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
+      : Promise.resolve({ count: 0 });
+
+    const wonLeadsCountPromise: Promise<CountResult> = wonStageIds.length
+      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", wonStageIds))
+      : Promise.resolve({ count: 0 });
+
+    const openRevenuePromise: Promise<ValueRows> = openStageIds.length
+      ? Promise.resolve(supabase.from("leads").select("value_in_cents").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
+      : Promise.resolve({ data: [] });
+
+    const last7DaysCountPromise: Promise<CountResult> = Promise.resolve(
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("created_at", sevenDaysAgoIso)
+    );
+
+    const overdueCountPromise: Promise<CountResult> = Promise.resolve(
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).lt("follow_up_at", nowIso)
+    );
+
+    const [
+      { data: leadRows, count },
+      { count: openCount },
+      { count: wonCount },
+      { data: openRevenueRows },
+      { count: last7Count },
+      { count: overdueCount },
+    ] = await Promise.all([
+      Promise.resolve(leadQuery.order("created_at", { ascending: false }).range(from, from + PAGE_SIZE - 1)),
+      openLeadsCountPromise,
+      wonLeadsCountPromise,
+      openRevenuePromise,
+      last7DaysCountPromise,
+      overdueCountPromise,
+    ]);
+
     totalCount = count ?? 0;
     leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at }));
+    openLeadsCount = openCount ?? 0;
+    wonLeadsCount = wonCount ?? 0;
+    openRevenueInCents = (openRevenueRows ?? []).reduce((sum, row) => sum + Number(row.value_in_cents), 0);
+    leadsLast7Days = last7Count ?? 0;
+    overdueFollowUpsCount = overdueCount ?? 0;
   }
 
   tasks = (taskRows ?? []).map((task) => {
@@ -63,5 +120,5 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} />;
+  return <Dashboard userName={userName} pipelineId={pipeline?.id ?? null} pipelineName={pipeline?.name ?? "Pipeline comercial"} stages={stages} leads={leads} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} currentPage={Math.min(requestedPage, totalPages)} totalPages={totalPages} filters={{ search, stageId: params.stage ?? "" }} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} />;
 }
