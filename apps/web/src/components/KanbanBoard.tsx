@@ -11,6 +11,10 @@ function currency(valueInCents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100);
 }
 
+function arrivalDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
 function followUpState(value: string | null) {
   if (!value) return null;
   const target = new Date(value);
@@ -459,13 +463,20 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                       {lead.name}
                     </button>
                   </h3>
-                  <strong>{currency(lead.valueInCents)}</strong>
-                  <p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
-                  {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}
-                  <div onClick={(event) => event.stopPropagation()}>
-                    <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
+                  <time className="deal-card-date">{arrivalDate(lead.createdAt)}</time>
+
+                  {/* Valor, contato, follow-up e ações só aparecem ao passar o
+                      mouse ou focar via teclado (:focus-within) — mantém o
+                      card enxuto por padrão sem perder acesso às ações. */}
+                  <div className="deal-card-extra">
+                    <strong>{currency(lead.valueInCents)}</strong>
+                    <p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
+                    {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
+                    </div>
+                    <form action={archiveLead} onClick={(event) => event.stopPropagation()}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
                   </div>
-                  <form action={archiveLead} onClick={(event) => event.stopPropagation()}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
                 </article>
               ))}
             </div>
