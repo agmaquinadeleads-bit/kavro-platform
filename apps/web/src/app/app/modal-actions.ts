@@ -227,11 +227,19 @@ export type LeadDetailMember = {
   email: string | null;
 };
 
+export type LeadDetailPurchase = {
+  id: string;
+  product: string;
+  value_in_cents: number;
+  purchased_at: string;
+};
+
 export type LeadDetailData = {
   lead: LeadDetailLead;
   events: LeadDetailEvent[];
   tasks: LeadDetailTask[];
   members: LeadDetailMember[];
+  purchases: LeadDetailPurchase[];
 };
 
 // Busca os dados completos do lead pro modal — mesma query que existe em
@@ -246,7 +254,7 @@ export async function getLeadDetailData(leadId: string): Promise<LeadDetailData 
 
   const { supabase, orgId } = await getAuthContext();
 
-  const [{ data: lead }, { data: events }, { data: tasks }, { data: members }] = await Promise.all([
+  const [{ data: lead }, { data: events }, { data: tasks }, { data: members }, { data: purchases }] = await Promise.all([
     supabase
       .from("leads")
       .select("id, name, email, phone, source, value_in_cents, follow_up_at, notes, status, owner_id, version, created_at, updated_at")
@@ -272,7 +280,16 @@ export async function getLeadDetailData(leadId: string): Promise<LeadDetailData 
       .from("organization_members")
       .select("user_id, role, user_profiles(full_name, email)")
       .eq("org_id", orgId)
-      .order("created_at")
+      .order("created_at"),
+    // Só retorna algo quando este lead é um card de cliente no funil de
+    // pós-venda (customer_lead_id) — leads do funil de vendas não têm
+    // compras associadas a si mesmos, só ao card do cliente que geraram.
+    supabase
+      .from("customer_purchases")
+      .select("id, product, value_in_cents, purchased_at")
+      .eq("org_id", orgId)
+      .eq("customer_lead_id", idCheck.data)
+      .order("purchased_at", { ascending: false })
   ]);
 
   if (!lead) return null;
@@ -293,6 +310,7 @@ export async function getLeadDetailData(leadId: string): Promise<LeadDetailData 
     lead,
     events: events ?? [],
     tasks: tasks ?? [],
-    members: normalizedMembers
+    members: normalizedMembers,
+    purchases: purchases ?? []
   };
 }

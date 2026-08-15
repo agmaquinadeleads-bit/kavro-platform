@@ -29,6 +29,8 @@ type DraggedLead = { leadId: string; version: number; stageId: string };
 
 type PendingLossMove = { leadId: string; leadName: string; version: number; stageId: string };
 
+type PendingWonMove = { leadId: string; leadName: string; version: number; stageId: string };
+
 type LossReasonPromptProps = {
   leadName: string;
   onCancel: () => void;
@@ -132,6 +134,119 @@ function LossReasonPrompt({ leadName, onCancel, onConfirm }: LossReasonPromptPro
             disabled={!reason.trim()}
             onClick={() => {
               if (reason.trim()) onConfirm(reason.trim());
+            }}
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type WonProductPromptProps = {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (product: string) => void;
+};
+
+function WonProductPrompt({ leadName, onCancel, onConfirm }: WonProductPromptProps) {
+  const [product, setProduct] = useState("");
+
+  const overlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000
+  };
+
+  const modalStyle: CSSProperties = {
+    backgroundColor: "var(--surface)",
+    borderRadius: "8px",
+    border: "1px solid var(--line)",
+    padding: "24px",
+    maxWidth: "360px",
+    width: "90%",
+    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+  };
+
+  const titleStyle: CSSProperties = {
+    fontSize: "16px",
+    fontWeight: 600,
+    color: "var(--ink)",
+    margin: "0 0 12px 0"
+  };
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    height: "38px",
+    border: "1px solid var(--line)",
+    borderRadius: "7px",
+    padding: "0 10px",
+    fontSize: "13px",
+    color: "var(--ink)",
+    marginBottom: "16px"
+  };
+
+  const buttonsStyle: CSSProperties = {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "flex-end"
+  };
+
+  const cancelButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: "var(--surface)",
+    color: "var(--ink)",
+    border: "1px solid var(--line)",
+    borderRadius: "6px",
+    cursor: "pointer"
+  };
+
+  const confirmButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: product.trim() ? "var(--primary)" : "var(--muted)",
+    color: "white",
+    border: "1px solid transparent",
+    borderRadius: "6px",
+    cursor: product.trim() ? "pointer" : "not-allowed",
+    opacity: product.trim() ? 1 : 0.7
+  };
+
+  return (
+    <div style={overlayStyle} onClick={onCancel}>
+      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
+        <h2 style={titleStyle}>Qual produto foi vendido?</h2>
+        <input
+          type="text"
+          required
+          maxLength={160}
+          autoFocus
+          value={product}
+          onChange={(event) => setProduct(event.target.value)}
+          placeholder="Produto vendido"
+          aria-label={`Produto vendido para ${leadName}`}
+          style={inputStyle}
+        />
+        <div style={buttonsStyle}>
+          <button type="button" style={cancelButtonStyle} onClick={onCancel}>Cancelar</button>
+          <button
+            type="button"
+            style={confirmButtonStyle}
+            disabled={!product.trim()}
+            onClick={() => {
+              if (product.trim()) onConfirm(product.trim());
             }}
           >
             Confirmar
@@ -253,6 +368,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
   const [draggedLead, setDraggedLead] = useState<DraggedLead | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [pendingLossMove, setPendingLossMove] = useState<PendingLossMove | null>(null);
+  const [pendingWonMove, setPendingWonMove] = useState<PendingWonMove | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [openMenuStageId, setOpenMenuStageId] = useState<string | null>(null);
@@ -292,7 +408,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     }
   }
 
-  async function submitMove(leadId: string, stageId: string, version: number, lossReason: string) {
+  async function submitMove(leadId: string, stageId: string, version: number, lossReason: string, wonProduct: string = "") {
     setIsMoving(true);
     try {
       const fd = new FormData();
@@ -300,6 +416,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
       fd.set("stage_id", stageId);
       fd.set("version", String(version));
       fd.set("loss_reason", lossReason ?? "");
+      fd.set("won_product", wonProduct ?? "");
       // moveLead é uma server action que faz redirect() internamente — esse é
       // o comportamento esperado (Next.js intercepta e navega). Não capturar
       // nem silenciar o erro especial de redirecionamento aqui.
@@ -320,6 +437,19 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     if (targetStage.isLost) {
       const lead = leads.find((item) => item.id === draggedLead.leadId);
       setPendingLossMove({
+        leadId: draggedLead.leadId,
+        leadName: lead?.name ?? "",
+        version: draggedLead.version,
+        stageId: targetStage.id
+      });
+      setDraggedLead(null);
+      setDragOverStageId(null);
+      return;
+    }
+
+    if (targetStage.isWon) {
+      const lead = leads.find((item) => item.id === draggedLead.leadId);
+      setPendingWonMove({
         leadId: draggedLead.leadId,
         leadName: lead?.name ?? "",
         version: draggedLead.version,
@@ -492,6 +622,18 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
             const { leadId, stageId, version } = pendingLossMove;
             setPendingLossMove(null);
             void submitMove(leadId, stageId, version, reason);
+          }}
+        />
+      ) : null}
+
+      {pendingWonMove ? (
+        <WonProductPrompt
+          leadName={pendingWonMove.leadName}
+          onCancel={() => setPendingWonMove(null)}
+          onConfirm={(product) => {
+            const { leadId, stageId, version } = pendingWonMove;
+            setPendingWonMove(null);
+            void submitMove(leadId, stageId, version, "", product);
           }}
         />
       ) : null}

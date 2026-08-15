@@ -17,7 +17,7 @@ type LeadDetailModalProps = {
   onClose: () => void;
 };
 
-type TabKey = "info" | "tasks" | "history";
+type TabKey = "info" | "tasks" | "history" | "purchases";
 
 // Mesmos textos de erro usados em apps/web/src/app/app/leads/[id]/page.tsx —
 // duplicado aqui porque o modal não navega por query params (?error=...),
@@ -63,6 +63,10 @@ function eventLabel(action: string) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+function currency(valueInCents: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100);
 }
 
 export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
@@ -325,6 +329,9 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
             <button type="button" role="tab" aria-selected={activeTab === "info"} style={tabButtonStyle("info")} onClick={() => setActiveTab("info")}>Informações</button>
             <button type="button" role="tab" aria-selected={activeTab === "tasks"} style={tabButtonStyle("tasks")} onClick={() => setActiveTab("tasks")}>Tarefas</button>
             <button type="button" role="tab" aria-selected={activeTab === "history"} style={tabButtonStyle("history")} onClick={() => setActiveTab("history")}>Histórico</button>
+            {data.purchases.length > 0 ? (
+              <button type="button" role="tab" aria-selected={activeTab === "purchases"} style={tabButtonStyle("purchases")} onClick={() => setActiveTab("purchases")}>Compras</button>
+            ) : null}
           </div>
         ) : null}
 
@@ -432,6 +439,32 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
                   ) : (
                     <p>Nenhum evento disponível.</p>
                   )}
+                </div>
+              ) : null}
+
+              {activeTab === "purchases" ? (
+                <div className="purchase-history">
+                  <div className="purchase-summary">
+                    <div>
+                      <span>Total gasto</span>
+                      <strong>{currency(data.purchases.reduce((sum, purchase) => sum + purchase.value_in_cents, 0))}</strong>
+                    </div>
+                    <div>
+                      <span>Compras</span>
+                      <strong>{data.purchases.length}</strong>
+                    </div>
+                  </div>
+                  <ol className="purchase-list">
+                    {data.purchases.map((purchase) => (
+                      <li key={purchase.id} className="purchase-item">
+                        <div>
+                          <strong>{purchase.product}</strong>
+                          <time>{formatDateTime(purchase.purchased_at)}</time>
+                        </div>
+                        <span>{currency(purchase.value_in_cents)}</span>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               ) : null}
             </>

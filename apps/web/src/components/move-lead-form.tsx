@@ -31,6 +31,7 @@ export function MoveLeadForm({ leadId, leadName, version, currentStageId, stages
         {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
       </select>
       {targetStage?.isLost ? <input key="loss-reason" className="loss-reason-input" name="loss_reason" required maxLength={160} placeholder="Por que essa oportunidade foi perdida?" aria-label={`Motivo de perda de ${leadName}`} /> : <input key="empty-loss-reason" type="hidden" name="loss_reason" value="" />}
+      {targetStage?.isWon ? <input key="won-product" className="loss-reason-input" name="won_product" required maxLength={160} placeholder="Qual produto foi vendido?" aria-label={`Produto vendido para ${leadName}`} /> : <input key="empty-won-product" type="hidden" name="won_product" value="" />}
       <MoveButton />
     </form>
   );

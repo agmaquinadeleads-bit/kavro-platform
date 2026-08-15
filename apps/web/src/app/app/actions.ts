@@ -69,7 +69,8 @@ const moveLeadSchema = z.object({
   leadId: uuidSchema,
   stageId: uuidSchema,
   version: z.coerce.number().int().positive(),
-  lossReason: z.string().trim().max(160)
+  lossReason: z.string().trim().max(160),
+  wonProduct: z.string().trim().max(160)
 });
 
 export async function moveLead(formData: FormData) {
@@ -77,14 +78,15 @@ export async function moveLead(formData: FormData) {
     leadId: formData.get("lead_id"),
     stageId: formData.get("stage_id"),
     version: formData.get("version"),
-    lossReason: formData.get("loss_reason") ?? ""
+    lossReason: formData.get("loss_reason") ?? "",
+    wonProduct: formData.get("won_product") ?? ""
   });
   if (!input.success) redirect("/app/pipeline?error=invalid_move");
 
   const { supabase, orgId } = await authenticatedContext();
   const { data, error } = await supabase
     .from("leads")
-    .update({ stage_id: input.data.stageId, loss_reason: input.data.lossReason || null })
+    .update({ stage_id: input.data.stageId, loss_reason: input.data.lossReason || null, won_product: input.data.wonProduct || null })
     .eq("id", input.data.leadId)
     .eq("org_id", orgId)
     .eq("version", input.data.version)

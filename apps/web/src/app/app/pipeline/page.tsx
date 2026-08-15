@@ -24,7 +24,7 @@ type PipelinePageProps = {
 
 const errorMessages: Record<string, string> = {
   invalid_move: "A movimentação solicitada é inválida.",
-  move_failed: "Não foi possível mover o lead. Para a etapa Perdido, informe o motivo.",
+  move_failed: "Não foi possível mover o lead. Para a etapa Perdido, informe o motivo; para Ganho, informe o produto vendido.",
   invalid_archive: "Não foi possível identificar o lead.",
   archive_failed: "Não foi possível arquivar o lead.",
   stale_lead: "Esse lead foi alterado em outra sessão. A tela foi atualizada.",
