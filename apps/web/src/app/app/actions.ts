@@ -238,10 +238,12 @@ export async function moveStagePosition(formData: FormData) {
   if (currentIndex === -1 || swapIndex < 0 || swapIndex >= stages.length) redirect("/app/pipeline");
 
   const swapStage = stages[swapIndex];
-  // pipeline_stages tem UNIQUE (org_id, pipeline_id, position) — trocar as duas
-  // posições direto violaria a constraint no meio da operação, por isso usamos
-  // um valor temporário negativo antes de aplicar as posições finais.
-  const { error: tempError } = await supabase.from("pipeline_stages").update({ position: -1 }).eq("id", targetStage.id).eq("org_id", orgId);
+  // pipeline_stages tem UNIQUE (org_id, pipeline_id, position) E CHECK (position >= 0)
+  // — trocar as duas posições direto violaria a constraint de unicidade, e um
+  // valor temporário negativo violaria o check de não-negativo. Usamos um
+  // sentinela positivo fora da faixa real (limite de 30 etapas por pipeline).
+  const TEMP_POSITION = 999999;
+  const { error: tempError } = await supabase.from("pipeline_stages").update({ position: TEMP_POSITION }).eq("id", targetStage.id).eq("org_id", orgId);
   if (tempError) redirect("/app/pipeline?error=stage_move_failed");
   const { error: swapError } = await supabase.from("pipeline_stages").update({ position: targetStage.position }).eq("id", swapStage.id).eq("org_id", orgId);
   if (swapError) redirect("/app/pipeline?error=stage_move_failed");
