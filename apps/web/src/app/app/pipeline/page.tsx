@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { archiveLead, createStage, renameStage } from "@/app/app/actions";
+import { createStage, renameStage } from "@/app/app/actions";
 import type { DashboardLead, DashboardStage } from "@/components/dashboard";
-import { MoveLeadForm } from "@/components/move-lead-form";
+import { KanbanBoard } from "@/components/KanbanBoard";
 import { createClient } from "@/lib/supabase/server";
 
 type PipelinePageProps = { searchParams: Promise<{ error?: string; success?: string }> };
@@ -27,20 +26,6 @@ const successMessages: Record<string, string> = {
   lead_moved: "Lead movido com sucesso.",
   lead_archived: "Lead arquivado com sucesso."
 };
-
-function currency(valueInCents: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100);
-}
-
-function followUpState(value: string | null) {
-  if (!value) return null;
-  const target = new Date(value);
-  const now = new Date();
-  const formatDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
-  if (target.getTime() < now.getTime()) return { kind: "overdue", label: "Follow-up vencido" };
-  if (formatDay.format(target) === formatDay.format(now)) return { kind: "today", label: "Follow-up hoje" };
-  return { kind: "future", label: new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(target) };
-}
 
 export default async function PipelinePage({ searchParams }: PipelinePageProps) {
   const params = await searchParams;
@@ -98,21 +83,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
           <>
             <section className="pipeline-header"><div><h2>{pipelineName}</h2><p>Dados reais do ambiente de homologação.</p></div><span>{leads.length} lead{leads.length === 1 ? "" : "s"}</span></section>
             {leads.length === 0 ? <section className="empty-state"><strong>Nenhum lead ainda</strong><p>Cadastre a primeira oportunidade na página de Leads.</p></section> : (
-              <section className="kanban real-kanban" aria-label={`Pipeline ${pipelineName}`}>
-                {stages.map((stage) => {
-                  const stageLeads = leads.filter((lead) => lead.stageId === stage.id);
-                  return <div className="column" key={stage.id}>
-                    <header><div><i className={stage.isWon ? "green" : stage.isLost ? "red" : "blue"} /><strong>{stage.name}</strong><span>{stageLeads.length}</span></div></header>
-                    <p>{currency(stageLeads.reduce((sum, lead) => sum + lead.valueInCents, 0))}</p>
-                    <div className="card-list">{stageLeads.map((lead) => <article className="deal-card" key={lead.id}>
-                      <div className="deal-type">{lead.source || "SEM ORIGEM"}</div><h3><Link href={`/app/leads/${lead.id}`}>{lead.name}</Link></h3><strong>{currency(lead.valueInCents)}</strong><p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
-                      {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}
-                      <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
-                      <form action={archiveLead}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
-                    </article>)}</div>
-                  </div>;
-                })}
-              </section>
+              <KanbanBoard stages={stages} leads={leads} />
             )}
           </>
         ) : <div className="feedback error" role="alert">Nenhum pipeline disponível para esta organização.</div>}
