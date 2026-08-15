@@ -132,8 +132,8 @@ button { cursor:pointer; }
 
 .btn-secondary { padding:10px 14px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; transition:background-color .15s ease; }
 .btn-secondary:hover { background:#f5f7f5; }
-.btn-primary { padding:10px 16px; border-radius:8px; border:1px solid var(--green); background:var(--green); color:#fff; font-size:14px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background-color .15s ease, border-color .15s ease; }
-.btn-primary:hover { background:var(--green-dark); border-color:var(--green-dark); }
+.btn-primary { padding:10px 16px; border-radius:8px; border:1px solid var(--primary); background:var(--primary); color:#fff; font-size:14px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background-color .15s ease, border-color .15s ease; }
+.btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
 .btn-primary:disabled { background:#b9c4bd; border-color:#b9c4bd; cursor:not-allowed; }
 
 .pipeline-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }

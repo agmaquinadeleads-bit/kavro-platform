@@ -1,7 +1,7 @@
 "use client";
 
 import { CSSProperties, useEffect, useState } from "react";
-import { archiveLead, deleteStage, moveLead, moveStagePosition } from "@/app/app/actions";
+import { archiveLead, deleteStage, moveLead, moveStagePosition, renameStage } from "@/app/app/actions";
 import { MoveLeadForm } from "@/components/move-lead-form";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LeadDetailModal } from "./LeadDetailModal";
@@ -138,6 +138,108 @@ function LossReasonPrompt({ leadName, onCancel, onConfirm }: LossReasonPromptPro
   );
 }
 
+type RenameStagePromptProps = {
+  stage: DashboardStage;
+  onCancel: () => void;
+};
+
+function RenameStagePrompt({ stage, onCancel }: RenameStagePromptProps) {
+  const overlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000
+  };
+
+  const modalStyle: CSSProperties = {
+    backgroundColor: "var(--surface)",
+    borderRadius: "8px",
+    border: "1px solid var(--line)",
+    padding: "24px",
+    maxWidth: "360px",
+    width: "90%",
+    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+  };
+
+  const titleStyle: CSSProperties = {
+    fontSize: "16px",
+    fontWeight: 600,
+    color: "var(--ink)",
+    margin: "0 0 12px 0"
+  };
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    height: "38px",
+    border: "1px solid var(--line)",
+    borderRadius: "7px",
+    padding: "0 10px",
+    fontSize: "13px",
+    color: "var(--ink)",
+    marginBottom: "16px"
+  };
+
+  const buttonsStyle: CSSProperties = {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "flex-end"
+  };
+
+  const cancelButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: "var(--surface)",
+    color: "var(--ink)",
+    border: "1px solid var(--line)",
+    borderRadius: "6px",
+    cursor: "pointer"
+  };
+
+  const confirmButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: "var(--primary)",
+    color: "white",
+    border: "1px solid transparent",
+    borderRadius: "6px",
+    cursor: "pointer"
+  };
+
+  return (
+    <div style={overlayStyle} onClick={onCancel}>
+      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
+        <h2 style={titleStyle}>Renomear etapa</h2>
+        <form action={renameStage}>
+          <input type="hidden" name="stage_id" value={stage.id} />
+          <input
+            type="text"
+            name="name"
+            required
+            maxLength={100}
+            autoFocus
+            defaultValue={stage.name}
+            aria-label="Novo nome da etapa"
+            style={inputStyle}
+          />
+          <div style={buttonsStyle}>
+            <button type="button" style={cancelButtonStyle} onClick={onCancel}>Cancelar</button>
+            <button type="submit" style={confirmButtonStyle}>Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 type KanbanBoardProps = {
   stages: DashboardStage[];
   leads: DashboardLead[];
@@ -152,6 +254,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
   const [openMenuStageId, setOpenMenuStageId] = useState<string | null>(null);
   const [stageToDelete, setStageToDelete] = useState<DashboardStage | null>(null);
   const [isDeletingStage, setIsDeletingStage] = useState(false);
+  const [stageToRename, setStageToRename] = useState<DashboardStage | null>(null);
 
   // Fecha o menu de coluna aberto ao clicar em qualquer lugar fora dele.
   useEffect(() => {
@@ -277,7 +380,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                         void submitMoveStage(stage.id, "left");
                       }}
                     >
-                      Mover para esquerda
+                      ← Mover esquerda
                     </button>
                     <button
                       type="button"
@@ -289,8 +392,20 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                         void submitMoveStage(stage.id, "right");
                       }}
                     >
-                      Mover para direita
+                      → Mover direita
                     </button>
+                    <button
+                      type="button"
+                      className="col-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setOpenMenuStageId(null);
+                        setStageToRename(stage);
+                      }}
+                    >
+                      Renomear etapa
+                    </button>
+                    <hr className="col-menu-divider" />
                     <button
                       type="button"
                       className="col-menu-item col-menu-item-danger"
@@ -388,6 +503,10 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
           void submitDeleteStage(stageId);
         }}
       />
+
+      {stageToRename ? (
+        <RenameStagePrompt stage={stageToRename} onCancel={() => setStageToRename(null)} />
+      ) : null}
     </section>
   );
 }
