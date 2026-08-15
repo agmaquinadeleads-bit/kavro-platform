@@ -13,6 +13,7 @@ import { DashboardChartsLoader } from "./dashboard-charts-loader";
 export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
 export type DashboardLead = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stageId: string; valueInCents: number; version: number; followUpAt: string | null; createdAt: string };
 export type DashboardTask = { id: string; leadId: string; leadName: string; title: string; dueAt: string | null; assignedTo: string | null; version: number };
+export type DashboardFunnelStage = { stageId: string; stageName: string; position: number; isWon: boolean; isLost: boolean; leadCount: number; totalValueInCents: number };
 export type { DashboardEvolutionPoint, DashboardOriginPoint, DashboardLossReasonPoint, DashboardRevenuePoint };
 
 type DashboardProps = {
@@ -32,6 +33,7 @@ type DashboardProps = {
   originData: DashboardOriginPoint[];
   lossReasonData: DashboardLossReasonPoint[];
   revenueData: DashboardRevenuePoint[];
+  funnelData: DashboardFunnelStage[];
 };
 
 function currency(valueInCents: number) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100); }
@@ -46,7 +48,11 @@ function taskDueState(value: string | null) {
   return { kind: "future", label: new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(date) };
 }
 
-export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCount, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData }: DashboardProps) {
+function stageKind(stage: DashboardFunnelStage): "green" | "red" | "blue" {
+  return stage.isWon ? "green" : stage.isLost ? "red" : "blue";
+}
+
+export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCount, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData, funnelData }: DashboardProps) {
   const closedTotal = openLeadsCount + wonLeadsCount;
   const conversionRate = closedTotal > 0 ? Math.round((wonLeadsCount / closedTotal) * 100) : 0;
   const averageTicketInCents = openLeadsCount > 0 ? Math.round(openRevenueInCents / openLeadsCount) : 0;
@@ -61,6 +67,14 @@ export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCo
     { label: "Leads últimos 7 dias", value: String(leadsLast7Days), detail: "novos cadastros" }
   ];
 
+  const funnelTotal = funnelData.reduce((sum, stage) => sum + stage.leadCount, 0);
+  const funnelRows = funnelData.map((stage, index) => {
+    const percentOfTotal = funnelTotal > 0 ? (stage.leadCount / funnelTotal) * 100 : 0;
+    const previousStage = index > 0 ? funnelData[index - 1] : undefined;
+    const conversionRateFromPrevious = previousStage && previousStage.leadCount > 0 ? (stage.leadCount / previousStage.leadCount) * 100 : null;
+    return { stage, percentOfTotal, conversionRateFromPrevious };
+  });
+
   return (
     <>
       <header className="topbar"><div><p>AMBIENTE DE HOMOLOGAÇÃO</p><h1>Olá, {userName}</h1></div><div className="top-actions"><a className="primary-link" href="/app/leads">+ Novo lead</a></div></header>
@@ -72,6 +86,26 @@ export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCo
           </section>
 
           <DashboardChartsLoader evolutionData={evolutionData} originData={originData} lossReasonData={lossReasonData} revenueData={revenueData} />
+
+          <section className="funnel-section" aria-labelledby="funnel-section-title">
+            <h3 id="funnel-section-title">Funil de conversão</h3>
+            {funnelTotal > 0 ? (
+              <div className="funnel-list">
+                {funnelRows.map(({ stage, percentOfTotal, conversionRateFromPrevious }) => (
+                  <div className="funnel-row" key={stage.stageId}>
+                    <span className="funnel-row-label">{stage.stageName}</span>
+                    <div className="funnel-bar-track"><div className={`funnel-bar-fill ${stageKind(stage)}`} style={{ width: `${percentOfTotal}%` }} /></div>
+                    <div className="funnel-row-stats">
+                      <strong>{stage.leadCount} {stage.leadCount === 1 ? "lead" : "leads"}</strong>
+                      <span>{percentOfTotal.toFixed(1)}% do total{conversionRateFromPrevious !== null ? ` · ${conversionRateFromPrevious.toFixed(1)}% da anterior` : ""}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="chart-empty"><span>Sem dados suficientes ainda</span></div>
+            )}
+          </section>
 
           <section className="task-center" id="tasks" aria-labelledby="task-center-title">
             <div className="task-center-header"><div><p className="eyebrow">AGENDA COMERCIAL</p><h2 id="task-center-title">Tarefas pendentes</h2></div>{canSeeTeamTasks ? <nav aria-label="Escopo das tarefas"><a className={taskScope === "mine" ? "active" : ""} href="/app?tasks=mine">Minhas</a><a className={taskScope === "all" ? "active" : ""} href="/app?tasks=all">Equipe</a></nav> : null}</div>
