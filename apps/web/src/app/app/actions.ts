@@ -238,6 +238,7 @@ export async function moveStagePosition(formData: FormData) {
   if (currentIndex === -1 || swapIndex < 0 || swapIndex >= stages.length) redirect("/app/pipeline");
 
   const swapStage = stages[swapIndex];
+  if (!swapStage) redirect("/app/pipeline?error=stage_move_failed");
   // pipeline_stages tem UNIQUE (org_id, pipeline_id, position) E CHECK (position >= 0)
   // — trocar as duas posições direto violaria a constraint de unicidade, e um
   // valor temporário negativo violaria o check de não-negativo. Usamos um
