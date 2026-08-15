@@ -16,7 +16,7 @@ type PostIdea = { caption: string; imagePrompt: string };
 function extractJsonArray(text: string): unknown {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
+  return JSON.parse(fenced?.[1] ?? trimmed);
 }
 
 async function generatePostIdeas(theme: string, postCount: number): Promise<PostIdea[]> {
