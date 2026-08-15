@@ -198,7 +198,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
         const stageLeads = leads.filter((lead) => lead.stageId === stage.id);
         return (
           <div
-            className={`column${dragOverStageId === stage.id ? " drag-over" : ""}`}
+            className={`column${dragOverStageId === stage.id ? " drag-over" : ""}${stage.isLost ? " column-loss" : ""}`}
             key={stage.id}
             onDragOver={(event: React.DragEvent<HTMLDivElement>) => {
               event.preventDefault();
@@ -217,7 +217,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
             <div className="card-list">
               {stageLeads.map((lead) => (
                 <article
-                  className={`deal-card${draggedLead?.leadId === lead.id ? " dragging" : ""}`}
+                  className={`deal-card${draggedLead?.leadId === lead.id ? " dragging" : ""}${followUpState(lead.followUpAt)?.kind === "overdue" ? " overdue-card" : ""}`}
                   key={lead.id}
                   draggable
                   onDragStart={(event: React.DragEvent<HTMLElement>) => {

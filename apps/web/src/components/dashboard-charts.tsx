@@ -55,10 +55,20 @@ export type DashboardChartsProps = {
   revenueData: DashboardRevenuePoint[];
 };
 
-const GREEN = "#158a55";
-const GREEN_LIGHT = "rgba(21, 138, 85, 0.14)";
-const GREEN_DARK = "#0d6f44";
-const GREEN_MID = "#31b975";
+// Azul é a cor primária da marca (evolução/origem, métricas neutras).
+// Verde fica reservado para faturamento realizado (leads ganhos), mesma
+// semântica de "sucesso" usada no resto do app (var(--green)). Roxo é usado
+// nas razões de perda, alinhado com a cor da etapa "Perdido" no Kanban.
+const BLUE = "#2563eb";
+const BLUE_LIGHT = "rgba(37, 99, 235, 0.14)";
+const BLUE_DARK = "#1d4ed8";
+const BLUE_MID = "#60a5fa";
+const GREEN = "#16a34a";
+const GREEN_MID = "#22c55e";
+const GREEN_DARK = "#15803d";
+const PURPLE = "#7c3aed";
+const PURPLE_MID = "#a78bfa";
+const PURPLE_DARK = "#5b21b6";
 const NEUTRAL = "#b7c2bb";
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -88,9 +98,9 @@ function EvolutionChart({ data }: { data: DashboardEvolutionPoint[] }) {
       {
         label: "Leads criados",
         data: data.map((point) => point.leadCount),
-        borderColor: GREEN,
-        backgroundColor: GREEN_LIGHT,
-        pointBackgroundColor: GREEN,
+        borderColor: BLUE,
+        backgroundColor: BLUE_LIGHT,
+        pointBackgroundColor: BLUE,
         pointBorderColor: "#fff",
         pointRadius: 3,
         borderWidth: 2,
@@ -125,14 +135,14 @@ function OriginChart({ data }: { data: DashboardOriginPoint[] }) {
     );
   }
 
-  const palette = [GREEN, GREEN_MID, GREEN_DARK, "#7fd6a8", "#0a5c38"];
+  const palette = [BLUE, BLUE_MID, BLUE_DARK, "#93c5fd", "#1e3a8a"];
   const chartData = {
     labels: data.map((point) => point.source),
     datasets: [
       {
         label: "Leads",
         data: data.map((point) => point.leadCount),
-        backgroundColor: data.map((_, index) => palette[index % palette.length] ?? GREEN),
+        backgroundColor: data.map((_, index) => palette[index % palette.length] ?? BLUE),
         borderRadius: 6,
         maxBarThickness: 42
       }
@@ -164,7 +174,7 @@ function LossReasonChart({ data }: { data: DashboardLossReasonPoint[] }) {
     );
   }
 
-  const palette = [GREEN, GREEN_MID, GREEN_DARK, "#7fd6a8", "#0a5c38", NEUTRAL];
+  const palette = [PURPLE, PURPLE_MID, PURPLE_DARK, "#c4b5fd", "#4c1d95", NEUTRAL];
   const chartData = {
     labels: data.map((point) => point.lossReason),
     datasets: [
@@ -172,7 +182,7 @@ function LossReasonChart({ data }: { data: DashboardLossReasonPoint[] }) {
         label: "Leads perdidos",
         data: data.map((point) => point.leadCount),
         backgroundColor: data.map((point, index) =>
-          point.lossReason === "Sem motivo informado" ? NEUTRAL : palette[index % palette.length] ?? GREEN
+          point.lossReason === "Sem motivo informado" ? NEUTRAL : palette[index % palette.length] ?? PURPLE
         ),
         borderColor: "#fff",
         borderWidth: 2
