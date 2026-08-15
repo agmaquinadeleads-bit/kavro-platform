@@ -11,7 +11,8 @@ import { DashboardChartsLoader } from "./dashboard-charts-loader";
 // (MoveLeadForm, /app/pipeline/page.tsx) dependem desses tipos, mesmo que o
 // componente Dashboard não use mais stages/leads diretamente (movido pro Kanban).
 export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
-export type DashboardLead = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stageId: string; valueInCents: number; version: number; followUpAt: string | null; createdAt: string };
+export type DashboardLeadTag = { id: string; name: string; color: string };
+export type DashboardLead = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stageId: string; valueInCents: number; version: number; followUpAt: string | null; createdAt: string; tags: DashboardLeadTag[] };
 export type DashboardTask = { id: string; leadId: string; leadName: string; title: string; dueAt: string | null; assignedTo: string | null; version: number };
 export type DashboardFunnelStage = { stageId: string; stageName: string; position: number; isWon: boolean; isLost: boolean; leadCount: number; totalValueInCents: number };
 export type { DashboardEvolutionPoint, DashboardOriginPoint, DashboardLossReasonPoint, DashboardRevenuePoint };

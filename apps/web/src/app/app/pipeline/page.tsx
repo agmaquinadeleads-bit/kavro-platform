@@ -89,6 +89,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
     type OriginRow = { source: string | null };
     type MemberRow = { user_id: string; user_profiles: { full_name: string | null } | { full_name: string | null }[] | null };
     type PipelineLeadCountRow = { pipeline_id: string };
+    type LeadTagRow = { lead_id: string; tags: { id: string; name: string; color: string } | { id: string; name: string; color: string }[] | null };
 
     const stagesPromise: Promise<{ data: StageRow[] | null }> = Promise.resolve(
       supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
@@ -149,16 +150,32 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
       supabase.from("leads").select("pipeline_id").eq("org_id", orgId).is("deleted_at", null)
     );
 
-    const [{ data: stageRows }, { data: leadRows }, { data: originRows }, { data: memberRows }, { data: pipelineLeadCountRows }] = await Promise.all([
+    // Tags de todos os leads da org (mesmo padrão org-wide de
+    // pipelineLeadCountsPromise acima) — agrupadas por lead_id em JS.
+    const leadTagsPromise: Promise<{ data: LeadTagRow[] | null }> = Promise.resolve(
+      supabase.from("lead_tags").select("lead_id, tags(id, name, color)").eq("org_id", orgId)
+    );
+
+    const [{ data: stageRows }, { data: leadRows }, { data: originRows }, { data: memberRows }, { data: pipelineLeadCountRows }, { data: leadTagRows }] = await Promise.all([
       stagesPromise,
       leadsPromise,
       originsPromise,
       membersPromise,
-      pipelineLeadCountsPromise
+      pipelineLeadCountsPromise,
+      leadTagsPromise
     ]);
 
+    const tagsByLead = new Map<string, Array<{ id: string; name: string; color: string }>>();
+    for (const row of leadTagRows ?? []) {
+      const tag = Array.isArray(row.tags) ? row.tags[0] : row.tags;
+      if (!tag) continue;
+      const list = tagsByLead.get(row.lead_id) ?? [];
+      list.push(tag);
+      tagsByLead.set(row.lead_id, list);
+    }
+
     stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost }));
-    leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at }));
+    leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at, tags: tagsByLead.get(lead.id) ?? [] }));
     origins = Array.from(new Set((originRows ?? []).map((row) => row.source).filter((source): source is string => source !== null))).sort();
     members = (memberRows ?? []).map((member) => {
       const profile = Array.isArray(member.user_profiles) ? member.user_profiles[0] : member.user_profiles;

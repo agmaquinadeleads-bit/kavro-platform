@@ -119,11 +119,29 @@ export function LeadsPageClient({
   };
 
   const handleBulkDeleteClick = () => {
-    setIsLossModalOpen(true);
+    setIsDeleteConfirmOpen(true);
   };
 
   const handleBulkDeleteCancel = () => {
-    setIsLossModalOpen(false);
+    setIsDeleteConfirmOpen(false);
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      const leadIds = Array.from(selectedLeadIds);
+      const result = await deleteBulkLeads(leadIds);
+
+      if (result.success) {
+        setSelectedLeadIds(new Set());
+        setIsDeleteConfirmOpen(false);
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Erro ao arquivar leads:", error);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleMoveBulkLeadsToLoss = async (reason: string) => {
@@ -217,11 +235,26 @@ export function LeadsPageClient({
         isDeleting={isDeleting}
       />
 
+      <ConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        title="Arquivar leads"
+        message={`Tem certeza que deseja arquivar ${selectedLeadIds.size} lead${selectedLeadIds.size === 1 ? "" : "s"} selecionado${selectedLeadIds.size === 1 ? "" : "s"}? Eles somem da lista, mas os dados continuam salvos.`}
+        confirmText="Arquivar"
+        cancelText="Cancelar"
+        isDangerous
+        isLoading={isDeleting}
+        onCancel={handleBulkDeleteCancel}
+        onConfirm={handleBulkDeleteConfirm}
+      />
+
+      {/* Fluxo de "mover selecionados para Perdido" já implementado, sem
+          botão próprio pra acioná-lo no momento — mantido pronto pra uso
+          futuro, não removido junto da correção do botão Deletar. */}
       <LossReasonModal
         isOpen={isLossModalOpen}
         selectedLeadIds={selectedLeadIds}
         onConfirm={handleMoveBulkLeadsToLoss}
-        onCancel={handleBulkDeleteCancel}
+        onCancel={() => setIsLossModalOpen(false)}
         isLoading={isDeleting}
       />
     </>

@@ -599,6 +599,15 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                       mouse ou focar via teclado (:focus-within) — mantém o
                       card enxuto por padrão sem perder acesso às ações. */}
                   <div className="deal-card-extra">
+                    {lead.tags.length > 0 ? (
+                      <div className="deal-card-tags">
+                        {lead.tags.map((tag) => (
+                          <span key={tag.id} className="deal-card-tag" style={{ backgroundColor: `${tag.color}1a`, color: tag.color }}>
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     <strong>{currency(lead.valueInCents)}</strong>
                     <p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
                     {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}

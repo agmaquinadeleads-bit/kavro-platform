@@ -3,12 +3,16 @@
 import { CSSProperties, FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  addTagToLeadModal,
   assignLeadModal,
   createLeadTaskModal,
   getLeadDetailData,
+  moveLeadPipelineModal,
+  removeTagFromLeadModal,
   toggleLeadTaskModal,
   updateLeadModal,
   type LeadDetailData,
+  type LeadDetailEvent,
   type LeadDetailTask
 } from "@/app/app/modal-actions";
 
@@ -34,7 +38,12 @@ const errorMessages: Record<string, string> = {
   stale_task: "Essa tarefa foi alterada em outra sessão. Recarregue e tente novamente.",
   invalid_assignment: "O responsável selecionado é inválido.",
   assignment_forbidden: "Seu perfil só pode assumir o lead para si mesmo.",
-  assignment_failed: "Não foi possível alterar o responsável. Confirme se a migração 0005 foi aplicada."
+  assignment_failed: "Não foi possível alterar o responsável. Confirme se a migração 0005 foi aplicada.",
+  invalid_tag: "Informe um nome de tag válido.",
+  tag_failed: "Não foi possível aplicar a tag.",
+  tag_create_forbidden: "Essa tag ainda não existe. Peça a um admin/owner para criá-la primeiro.",
+  invalid_move: "Selecione um funil e uma etapa válidos.",
+  move_failed: "Não foi possível mover o lead para outro funil."
 };
 
 function resolveErrorMessage(code?: string) {
@@ -69,6 +78,53 @@ function currency(valueInCents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valueInCents / 100);
 }
 
+const CHANGE_FIELD_LABELS: Record<string, string> = {
+  name: "Nome",
+  email: "E-mail",
+  phone: "Telefone",
+  source: "Origem",
+  value_in_cents: "Valor",
+  follow_up_at: "Próximo contato",
+  owner: "Responsável"
+};
+
+function formatChangeValue(field: string, value: string | number | boolean | null) {
+  if (field === "value_in_cents") return currency(Number(value ?? 0));
+  if (field === "follow_up_at") return value ? formatDateTime(String(value)) : "—";
+  if (field === "owner") return value ? String(value) : "Sem responsável";
+  return value === null || value === "" ? "—" : String(value);
+}
+
+// Traduz o metadata gravado por audit_lead_change() (migration 0020) em
+// linhas legíveis — eventos gravados antes dessa migration não têm
+// from_stage/to_stage/changes, então essa função retorna [] pra eles (só
+// o label genérico do evento continua aparecendo).
+function eventDetailLines(event: LeadDetailEvent): string[] {
+  const metadata = event.metadata;
+  if (!metadata) return [];
+
+  if (event.action === "lead.stage_changed" && (metadata.from_stage || metadata.to_stage)) {
+    return [`De "${metadata.from_stage ?? "—"}" para "${metadata.to_stage ?? "—"}"`];
+  }
+
+  if (event.action === "lead.updated" && metadata.changes) {
+    const lines: string[] = [];
+    for (const [field, change] of Object.entries(metadata.changes)) {
+      if (field === "notes") {
+        lines.push("Anotações atualizadas");
+        continue;
+      }
+      if (typeof change === "object" && change !== null) {
+        const label = CHANGE_FIELD_LABELS[field] ?? field;
+        lines.push(`${label}: ${formatChangeValue(field, change.old)} → ${formatChangeValue(field, change.new)}`);
+      }
+    }
+    return lines;
+  }
+
+  return [];
+}
+
 export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
   const router = useRouter();
   const [data, setData] = useState<LeadDetailData | null>(null);
@@ -82,6 +138,11 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
   const [updatePending, setUpdatePending] = useState(false);
   const [taskPending, setTaskPending] = useState(false);
   const [togglingTaskId, setTogglingTaskId] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
+  const [tagPending, setTagPending] = useState(false);
+  const [removingTagId, setRemovingTagId] = useState<string | null>(null);
+  const [movePipelineId, setMovePipelineId] = useState("");
+  const [movePending, setMovePending] = useState(false);
 
   useEffect(() => {
     if (!leadId) {
@@ -92,6 +153,8 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
       setFormError(null);
       setSavedHint(false);
       setHasChanges(false);
+      setTagInput("");
+      setMovePipelineId("");
       return;
     }
 
@@ -206,6 +269,59 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
     setTogglingTaskId(null);
     if (result.success) {
       setHasChanges(true);
+      await refresh();
+    } else {
+      setFormError(resolveErrorMessage(result.error));
+    }
+  }
+
+  async function handleAddTagSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!leadId || !tagInput.trim()) return;
+    setFormError(null);
+    setTagPending(true);
+    const formData = new FormData();
+    formData.set("lead_id", leadId);
+    formData.set("tag_name", tagInput.trim());
+    const result = await addTagToLeadModal(formData);
+    setTagPending(false);
+    if (result.success) {
+      setTagInput("");
+      setHasChanges(true);
+      await refresh();
+    } else {
+      setFormError(resolveErrorMessage(result.error));
+    }
+  }
+
+  async function handleRemoveTag(tagId: string) {
+    if (!leadId) return;
+    setFormError(null);
+    setRemovingTagId(tagId);
+    const formData = new FormData();
+    formData.set("lead_id", leadId);
+    formData.set("tag_id", tagId);
+    const result = await removeTagFromLeadModal(formData);
+    setRemovingTagId(null);
+    if (result.success) {
+      setHasChanges(true);
+      await refresh();
+    } else {
+      setFormError(resolveErrorMessage(result.error));
+    }
+  }
+
+  async function handleMovePipelineSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+    setMovePending(true);
+    const formData = new FormData(event.currentTarget);
+    const result = await moveLeadPipelineModal(formData);
+    setMovePending(false);
+    if (result.success) {
+      setMovePipelineId("");
+      setHasChanges(true);
+      flashSaved();
       await refresh();
     } else {
       setFormError(resolveErrorMessage(result.error));
@@ -346,6 +462,37 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
 
               {activeTab === "info" ? (
                 <>
+                  <div className="tag-section">
+                    <span className="tag-section-label">Tags</span>
+                    <div className="tag-pills">
+                      {data.tags.map((tag) => (
+                        <span key={tag.id} className="tag-pill" style={{ backgroundColor: `${tag.color}1a`, color: tag.color }}>
+                          {tag.name}
+                          <button
+                            type="button"
+                            className="tag-pill-remove"
+                            aria-label={`Remover tag ${tag.name}`}
+                            disabled={removingTagId === tag.id}
+                            onClick={() => handleRemoveTag(tag.id)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {data.tags.length === 0 ? <span className="tag-empty">Nenhuma tag aplicada</span> : null}
+                    </div>
+                    <form className="tag-add-form" onSubmit={handleAddTagSubmit}>
+                      <input
+                        type="text"
+                        maxLength={60}
+                        placeholder="Nova tag (ex: Parceiro)"
+                        value={tagInput}
+                        onChange={(event) => setTagInput(event.target.value)}
+                      />
+                      <button type="submit" disabled={tagPending || !tagInput.trim()}>{tagPending ? "Aplicando..." : "+ Tag"}</button>
+                    </form>
+                  </div>
+
                   <form key={`assign-${data.lead.version}`} className="assignment-form" onSubmit={handleAssignSubmit}>
                     <input type="hidden" name="lead_id" value={data.lead.id} />
                     <input type="hidden" name="version" value={data.lead.version} />
@@ -375,6 +522,40 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
                     <label className="full-field">Anotações<textarea name="notes" defaultValue={data.lead.notes ?? ""} maxLength={10000} rows={6} /></label>
                     <button type="submit" disabled={updatePending}>{updatePending ? "Salvando..." : "Salvar alterações"}</button>
                   </form>
+
+                  {data.pipelines.filter((pipeline) => pipeline.id !== data.currentPipelineId).length > 0 ? (
+                    <form key={`move-${data.lead.version}`} className="move-pipeline-form" onSubmit={handleMovePipelineSubmit}>
+                      <input type="hidden" name="lead_id" value={data.lead.id} />
+                      <input type="hidden" name="version" value={data.lead.version} />
+                      <h3>Mover para outro funil</h3>
+                      <label>
+                        Funil
+                        <select
+                          name="pipeline_id"
+                          value={movePipelineId}
+                          onChange={(event) => setMovePipelineId(event.target.value)}
+                          required
+                        >
+                          <option value="">Selecione...</option>
+                          {data.pipelines
+                            .filter((pipeline) => pipeline.id !== data.currentPipelineId)
+                            .map((pipeline) => (
+                              <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        Etapa
+                        <select key={movePipelineId} name="stage_id" required disabled={!movePipelineId}>
+                          <option value="">Selecione...</option>
+                          {(data.pipelines.find((pipeline) => pipeline.id === movePipelineId)?.stages ?? []).map((stage) => (
+                            <option key={stage.id} value={stage.id}>{stage.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button type="submit" disabled={movePending || !movePipelineId}>{movePending ? "Movendo..." : "Mover"}</button>
+                    </form>
+                  ) : null}
                 </>
               ) : null}
 
@@ -431,6 +612,9 @@ export function LeadDetailModal({ leadId, onClose }: LeadDetailModalProps) {
                           <i />
                           <div>
                             <strong>{eventLabel(event.action)}</strong>
+                            {eventDetailLines(event).map((line, index) => (
+                              <p key={index} className="event-detail-line">{line}</p>
+                            ))}
                             <time>{formatDateTime(event.created_at)}</time>
                           </div>
                         </li>
