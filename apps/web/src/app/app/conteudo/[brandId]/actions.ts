@@ -1,6 +1,8 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -123,4 +125,143 @@ export async function approveEditorialLine(formData: FormData) {
 
   revalidatePath(`/app/conteudo/${input.data.brandId}`);
   redirect(`/app/conteudo/${input.data.brandId}?line=${input.data.lineId}&success=line_approved`);
+}
+
+const generateImageSchema = z.object({ postId: z.string().uuid(), brandId: z.string().uuid() });
+
+export async function generatePostImage(formData: FormData) {
+  const rawBrandId = formData.get("brand_id");
+  const input = generateImageSchema.safeParse({ postId: formData.get("post_id"), brandId: rawBrandId });
+  if (!input.success) redirect(`/app/conteudo/${rawBrandId}?error=invalid_post`);
+
+  const { supabase, orgId, user } = await getAuthContext();
+
+  const { data: post } = await supabase
+    .from("content_posts")
+    .select("id, ai_image_prompt")
+    .eq("id", input.data.postId)
+    .eq("org_id", orgId)
+    .eq("brand_id", input.data.brandId)
+    .maybeSingle();
+  if (!post) redirect(`/app/conteudo/${input.data.brandId}?error=invalid_post`);
+  if (!post.ai_image_prompt) redirect(`/app/conteudo/${input.data.brandId}?error=missing_image_prompt`);
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) redirect(`/app/conteudo/${input.data.brandId}?error=image_ai_not_configured`);
+
+  let publicUrl: string;
+  try {
+    const openai = new OpenAI({ apiKey });
+    const result = await openai.images.generate({ model: "gpt-image-1", prompt: post.ai_image_prompt, size: "1024x1024" });
+    const base64 = result.data?.[0]?.b64_json;
+    if (!base64) throw new Error("A IA não retornou uma imagem");
+
+    const path = `${orgId}/${randomUUID()}.png`;
+    const { error: uploadError } = await supabase.storage
+      .from("content-images")
+      .upload(path, Buffer.from(base64, "base64"), { contentType: "image/png", upsert: false });
+    if (uploadError) throw uploadError;
+
+    publicUrl = supabase.storage.from("content-images").getPublicUrl(path).data.publicUrl;
+  } catch {
+    redirect(`/app/conteudo/${input.data.brandId}?error=image_generation_failed`);
+  }
+
+  const { error: updateError } = await supabase
+    .from("content_posts")
+    .update({ image_url: publicUrl })
+    .eq("id", post.id)
+    .eq("org_id", orgId);
+  if (updateError) redirect(`/app/conteudo/${input.data.brandId}?error=image_generation_failed`);
+
+  await supabase.from("ai_generation_events").insert({
+    org_id: orgId,
+    brand_id: input.data.brandId,
+    kind: "image",
+    provider: "openai",
+    requested_by: user.id
+  });
+
+  revalidatePath(`/app/conteudo/${input.data.brandId}`);
+  redirect(`/app/conteudo/${input.data.brandId}?success=image_generated`);
+}
+
+const approvePostSchema = z.object({ postId: z.string().uuid(), brandId: z.string().uuid() });
+
+export async function approvePost(formData: FormData) {
+  const rawBrandId = formData.get("brand_id");
+  const input = approvePostSchema.safeParse({ postId: formData.get("post_id"), brandId: rawBrandId });
+  if (!input.success) redirect(`/app/conteudo/${rawBrandId}?error=invalid_post`);
+
+  const { supabase, orgId, role } = await getAuthContext();
+  if (role !== "owner" && role !== "admin") redirect(`/app/conteudo/${input.data.brandId}?error=forbidden`);
+
+  const { data, error } = await supabase
+    .from("content_posts")
+    .update({ status: "approved" })
+    .eq("id", input.data.postId)
+    .eq("org_id", orgId)
+    .select("id");
+  if (error || !data?.length) redirect(`/app/conteudo/${input.data.brandId}?error=post_approve_failed`);
+
+  revalidatePath(`/app/conteudo/${input.data.brandId}`);
+  redirect(`/app/conteudo/${input.data.brandId}?success=post_approved`);
+}
+
+const schedulePostSchema = z.object({
+  postId: z.string().uuid(),
+  brandId: z.string().uuid(),
+  scheduledAt: z.string().trim().min(1),
+  providers: z.array(z.enum(["instagram", "facebook"])).min(1)
+});
+
+export async function schedulePost(formData: FormData) {
+  const rawBrandId = formData.get("brand_id");
+  const input = schedulePostSchema.safeParse({
+    postId: formData.get("post_id"),
+    brandId: rawBrandId,
+    scheduledAt: formData.get("scheduled_at"),
+    providers: formData.getAll("providers")
+  });
+  if (!input.success) redirect(`/app/conteudo/${rawBrandId}?error=invalid_schedule`);
+
+  const scheduledDate = new Date(input.data.scheduledAt);
+  if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+    redirect(`/app/conteudo/${input.data.brandId}?error=invalid_schedule_date`);
+  }
+
+  const { supabase, orgId } = await getAuthContext();
+
+  const { data: post } = await supabase
+    .from("content_posts")
+    .select("id, image_url")
+    .eq("id", input.data.postId)
+    .eq("org_id", orgId)
+    .eq("brand_id", input.data.brandId)
+    .maybeSingle();
+  if (!post) redirect(`/app/conteudo/${input.data.brandId}?error=invalid_post`);
+  if (!post.image_url) redirect(`/app/conteudo/${input.data.brandId}?error=missing_image`);
+
+  // Confirma que a marca tem conexão ativa pra cada rede escolhida — sem
+  // isso o worker de publicação sempre falharia por falta de conexão.
+  const { data: connections } = await supabase
+    .from("social_connections")
+    .select("provider")
+    .eq("org_id", orgId)
+    .eq("brand_id", input.data.brandId)
+    .eq("status", "connected");
+  const connectedProviders = new Set((connections ?? []).map((connection) => connection.provider));
+  const missingProvider = input.data.providers.some((provider) => !connectedProviders.has(provider));
+  if (missingProvider) redirect(`/app/conteudo/${input.data.brandId}?error=provider_not_connected`);
+
+  const { data, error } = await supabase
+    .from("content_posts")
+    .update({ status: "scheduled", scheduled_at: scheduledDate.toISOString(), target_providers: input.data.providers })
+    .eq("id", input.data.postId)
+    .eq("org_id", orgId)
+    .select("id");
+  if (error || !data?.length) redirect(`/app/conteudo/${input.data.brandId}?error=schedule_failed`);
+
+  revalidatePath(`/app/conteudo/${input.data.brandId}`);
+  redirect(`/app/conteudo/${input.data.brandId}?success=post_scheduled`);
 }
