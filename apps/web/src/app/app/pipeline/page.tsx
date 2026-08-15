@@ -42,7 +42,11 @@ const errorMessages: Record<string, string> = {
   invalid_pipeline: "Revise os dados do funil.",
   pipeline_limit: "Limite de funis atingido.",
   pipeline_create_failed: "Não foi possível criar o funil.",
-  pipeline_update_failed: "Não foi possível renomear o funil."
+  pipeline_update_failed: "Não foi possível renomear o funil.",
+  pipeline_protected: "Esse funil é usado por automações do sistema e não pode ser excluído.",
+  pipeline_has_leads: "Só é possível excluir um funil sem nenhum lead (nem arquivado). Mova os leads dele para outro funil primeiro.",
+  pipeline_last_one: "A organização precisa ter ao menos um funil.",
+  pipeline_delete_failed: "Não foi possível excluir o funil."
 };
 const successMessages: Record<string, string> = {
   stage_created: "Etapa criada com sucesso.",
@@ -52,7 +56,8 @@ const successMessages: Record<string, string> = {
   stage_moved: "Etapa reordenada com sucesso.",
   stage_deleted: "Etapa excluída com sucesso.",
   pipeline_created: "Funil criado com sucesso.",
-  pipeline_renamed: "Funil renomeado com sucesso."
+  pipeline_renamed: "Funil renomeado com sucesso.",
+  pipeline_deleted: "Funil excluído com sucesso."
 };
 
 export default async function PipelinePage({ searchParams }: PipelinePageProps) {
@@ -72,7 +77,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
 
   // Todos os funis da org, para as abas — a seleção de qual está ativo
   // (query param ?pipeline=) é validada contra essa lista, nunca usada crua.
-  const { data: allPipelines } = await supabase.from("pipelines").select("id, name, position").eq("org_id", orgId).order("position", { ascending: true });
+  const { data: allPipelines } = await supabase.from("pipelines").select("id, name, position, is_protected").eq("org_id", orgId).order("position", { ascending: true });
   const pipelines = allPipelines ?? [];
   const requestedPipelineId = validateUUID(params.pipeline);
   const pipeline = (requestedPipelineId ? pipelines.find((item) => item.id === requestedPipelineId) : undefined) ?? pipelines[0] ?? null;
@@ -212,7 +217,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
         {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
 
         <PipelineTabs
-          pipelines={pipelines.map((item) => ({ id: item.id, name: item.name, leadCount: leadCountByPipeline.get(item.id) ?? 0 }))}
+          pipelines={pipelines.map((item) => ({ id: item.id, name: item.name, leadCount: leadCountByPipeline.get(item.id) ?? 0, isProtected: item.is_protected }))}
           activePipelineId={pipelineId}
         />
 

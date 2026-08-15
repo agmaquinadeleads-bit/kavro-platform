@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { CSSProperties, useState } from "react";
-import { renamePipeline } from "@/app/app/actions";
+import { deletePipeline, renamePipeline } from "@/app/app/actions";
+import { ConfirmModal } from "./ConfirmModal";
 import { NewPipelineModal } from "./NewPipelineModal";
 
 export interface PipelineTabItem {
   id: string;
   name: string;
   leadCount: number;
+  isProtected: boolean;
 }
 
 interface PipelineTabsProps {
@@ -19,6 +21,21 @@ interface PipelineTabsProps {
 export function PipelineTabs({ pipelines, activePipelineId }: PipelineTabsProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [pipelineToRename, setPipelineToRename] = useState<PipelineTabItem | null>(null);
+  const [pipelineToDelete, setPipelineToDelete] = useState<PipelineTabItem | null>(null);
+  const [isDeletingPipeline, setIsDeletingPipeline] = useState(false);
+
+  async function submitDeletePipeline(pipelineId: string) {
+    setIsDeletingPipeline(true);
+    try {
+      const fd = new FormData();
+      fd.set("pipeline_id", pipelineId);
+      // deletePipeline é uma server action que faz redirect() internamente —
+      // mesmo padrão de submitDeleteStage no KanbanBoard.
+      await deletePipeline(fd);
+    } finally {
+      setIsDeletingPipeline(false);
+    }
+  }
 
   return (
     <>
@@ -42,6 +59,17 @@ export function PipelineTabs({ pipelines, activePipelineId }: PipelineTabsProps)
                   ✎
                 </button>
               ) : null}
+              {isActive && !pipeline.isProtected ? (
+                <button
+                  type="button"
+                  className="pipeline-tab-delete"
+                  aria-label={`Excluir funil ${pipeline.name}`}
+                  title="Excluir funil"
+                  onClick={() => setPipelineToDelete(pipeline)}
+                >
+                  🗑
+                </button>
+              ) : null}
             </div>
           );
         })}
@@ -55,6 +83,23 @@ export function PipelineTabs({ pipelines, activePipelineId }: PipelineTabsProps)
       {pipelineToRename ? (
         <RenamePipelinePrompt pipeline={pipelineToRename} onCancel={() => setPipelineToRename(null)} />
       ) : null}
+
+      <ConfirmModal
+        isOpen={pipelineToDelete !== null}
+        title="Excluir funil"
+        message={`Tem certeza que deseja excluir o funil "${pipelineToDelete?.name ?? ""}"? Só é possível excluir funis sem nenhum lead. Essa ação não pode ser desfeita.`}
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        isDangerous
+        isLoading={isDeletingPipeline}
+        onCancel={() => setPipelineToDelete(null)}
+        onConfirm={() => {
+          if (!pipelineToDelete) return;
+          const pipelineId = pipelineToDelete.id;
+          setPipelineToDelete(null);
+          void submitDeletePipeline(pipelineId);
+        }}
+      />
     </>
   );
 }

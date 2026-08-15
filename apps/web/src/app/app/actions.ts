@@ -336,6 +336,39 @@ export async function renamePipeline(formData: FormData) {
   redirect(`/app/pipeline?pipeline=${input.data.pipelineId}&success=pipeline_renamed`);
 }
 
+const deletePipelineSchema = z.object({ pipelineId: uuidSchema });
+
+export async function deletePipeline(formData: FormData) {
+  const input = deletePipelineSchema.safeParse({ pipelineId: formData.get("pipeline_id") });
+  if (!input.success) redirect("/app/pipeline?error=invalid_pipeline");
+
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
+
+  const { data: pipeline } = await supabase.from("pipelines").select("id, is_protected").eq("id", input.data.pipelineId).eq("org_id", orgId).maybeSingle();
+  if (!pipeline) redirect("/app/pipeline?error=pipeline_missing");
+
+  // Pós-venda e Parceiros e fornecedores são alvo de automações (trigger de
+  // venda ganha / trigger de tag) — excluí-los quebraria essas automações.
+  if (pipeline.is_protected) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=pipeline_protected`);
+
+  // leads.pipeline_id não tem ON DELETE CASCADE de propósito — qualquer
+  // lead (mesmo arquivado) bloqueia o DELETE no banco. Checamos antes pra
+  // dar um erro claro em vez de deixar o Postgres estourar a violação de FK.
+  const { count: leadCount } = await supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", input.data.pipelineId);
+  if ((leadCount ?? 0) > 0) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=pipeline_has_leads`);
+
+  const { count: pipelineCount } = await supabase.from("pipelines").select("id", { count: "exact", head: true }).eq("org_id", orgId);
+  if ((pipelineCount ?? 0) <= 1) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=pipeline_last_one`);
+
+  const { error } = await supabase.from("pipelines").delete().eq("id", input.data.pipelineId).eq("org_id", orgId);
+  if (error) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=pipeline_delete_failed`);
+
+  revalidatePath("/app");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=pipeline_deleted");
+}
+
 const createTaskSchema = z.object({
   leadId: uuidSchema,
   title: z.string().trim().min(1).max(160),
