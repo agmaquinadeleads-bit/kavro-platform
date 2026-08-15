@@ -17,6 +17,7 @@
     "test:dashboard": "node scripts/test-dashboard-aggregations.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@supabase/ssr": "0.12.3",
     "@supabase/supabase-js": "2.110.8",
     "chart.js": "^4.5.1",
