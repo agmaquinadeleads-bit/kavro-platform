@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { assignLead, createLeadTask, toggleLeadTask, updateLead } from "@/app/app/actions";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth-context";
 
 type LeadDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -42,18 +42,13 @@ function eventLabel(action: string) {
 
 export default async function LeadDetailPage({ params, searchParams }: LeadDetailPageProps) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: membership } = await supabase.from("organization_members").select("org_id, role").eq("user_id", user.id).limit(1).maybeSingle();
-  if (!membership) redirect("/onboarding");
+  const { supabase, orgId } = await getAuthContext();
 
   const [{ data: lead }, { data: events }, { data: tasks }, { data: members }] = await Promise.all([
-    supabase.from("leads").select("id, name, email, phone, source, value_in_cents, follow_up_at, notes, status, owner_id, version, created_at, updated_at").eq("id", id).eq("org_id", membership.org_id).is("deleted_at", null).maybeSingle(),
-    supabase.from("audit_events").select("id, action, created_at").eq("org_id", membership.org_id).eq("resource_id", id).order("created_at", { ascending: false }).limit(30),
-    supabase.from("lead_tasks").select("id, title, description, due_at, completed_at, version, created_at").eq("org_id", membership.org_id).eq("lead_id", id).order("completed_at", { ascending: true, nullsFirst: true }).order("due_at", { ascending: true, nullsFirst: false }),
-    supabase.from("organization_members").select("user_id, role, user_profiles(full_name, email)").eq("org_id", membership.org_id).order("created_at")
+    supabase.from("leads").select("id, name, email, phone, source, value_in_cents, follow_up_at, notes, status, owner_id, version, created_at, updated_at").eq("id", id).eq("org_id", orgId).is("deleted_at", null).maybeSingle(),
+    supabase.from("audit_events").select("id, action, created_at").eq("org_id", orgId).eq("resource_id", id).order("created_at", { ascending: false }).limit(30),
+    supabase.from("lead_tasks").select("id, title, description, due_at, completed_at, version, created_at").eq("org_id", orgId).eq("lead_id", id).order("completed_at", { ascending: true, nullsFirst: true }).order("due_at", { ascending: true, nullsFirst: false }),
+    supabase.from("organization_members").select("user_id, role, user_profiles(full_name, email)").eq("org_id", orgId).order("created_at")
   ]);
   if (!lead) notFound();
 

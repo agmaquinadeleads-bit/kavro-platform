@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import { createStage, renameStage } from "@/app/app/actions";
 import type { DashboardLead, DashboardStage } from "@/components/dashboard";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth-context";
 
 type PipelinePageProps = { searchParams: Promise<{ error?: string; success?: string }> };
 
@@ -30,13 +29,9 @@ const successMessages: Record<string, string> = {
 export default async function PipelinePage({ searchParams }: PipelinePageProps) {
   const params = await searchParams;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: membership } = await supabase.from("organization_members").select("org_id, role").eq("user_id", user.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
-  if (!membership) redirect("/onboarding");
+  const { supabase, orgId } = await getAuthContext();
 
-  const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", membership.org_id).order("position", { ascending: true }).limit(1).maybeSingle();
+  const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", orgId).order("position", { ascending: true }).limit(1).maybeSingle();
 
   let stages: DashboardStage[] = [];
   let leads: DashboardLead[] = [];
@@ -48,10 +43,10 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
     // org_id + pipeline_id vêm do contexto autenticado (membership, pipeline),
     // nunca de input do usuário — mesmo padrão usado em /app/page.tsx.
     const stagesPromise: Promise<{ data: StageRow[] | null }> = Promise.resolve(
-      supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
+      supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
     );
     const leadsPromise: Promise<{ data: LeadRow[] | null }> = Promise.resolve(
-      supabase.from("leads").select("id, name, email, phone, source, stage_id, value_in_cents, version, follow_up_at, created_at").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).order("created_at", { ascending: false })
+      supabase.from("leads").select("id, name, email, phone, source, stage_id, value_in_cents, version, follow_up_at, created_at").eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).order("created_at", { ascending: false })
     );
 
     const [{ data: stageRows }, { data: leadRows }] = await Promise.all([stagesPromise, leadsPromise]);

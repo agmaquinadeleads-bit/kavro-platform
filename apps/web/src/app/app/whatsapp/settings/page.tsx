@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth-context";
 import { MetaEmbeddedSignup } from "@/components/meta-embedded-signup";
 
 type Props = { searchParams: Promise<{ method?: string }> };
 
 export default async function WhatsappSettingsPage({ searchParams }: Props) {
   const params = await searchParams;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/app");
-  const { data: membership } = await supabase.from("organization_members").select("org_id, role").eq("user_id", user.id).maybeSingle();
-  if (!membership) redirect("/onboarding");
-  if (membership.role === "member") redirect("/app/whatsapp");
-  const { data: connections } = await supabase.from("whatsapp_connections").select("id, display_name, phone_number, provider, status").eq("org_id", membership.org_id).order("created_at");
+  const { supabase, orgId, role } = await getAuthContext();
+  if (role === "member") redirect("/app/whatsapp");
+  const { data: connections } = await supabase.from("whatsapp_connections").select("id, display_name, phone_number, provider, status").eq("org_id", orgId).order("created_at");
   const method = params.method === "official" || params.method === "qr" ? params.method : null;
 
   return <main className="centered-page"><section className="setup-card whatsapp-settings-card">

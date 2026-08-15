@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
 import { LeadsPageClient } from "@/components/LeadsPageClient";
 import { NewLeadButton } from "@/components/NewLeadButton";
 import { type LeadRowData } from "@/components/LeadRow";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth-context";
 import "./page.css";
 
 export const metadata = {
@@ -93,25 +92,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const originText = params.origin ? params.origin.trim().substring(0, 120) : null;
   const creativeId = validateUUID(params.creative);
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: membership } = await supabase
-    .from("organization_members")
-    .select("org_id, role")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) {
-    redirect("/onboarding");
-  }
-
-  const orgId = membership.org_id;
+  const { supabase, orgId } = await getAuthContext();
 
   // Build base query with filters
   let countQuery = supabase

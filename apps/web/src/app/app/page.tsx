@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
 import { Dashboard, type DashboardEvolutionPoint, type DashboardFunnelStage, type DashboardLossReasonPoint, type DashboardOriginPoint, type DashboardRevenuePoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthContext } from "@/lib/auth-context";
 
 type AppPageProps = { searchParams: Promise<{ error?: string; success?: string; tasks?: string }> };
 const errorMessages: Record<string, string> = { invalid_lead: "Revise os dados do lead.", create_failed: "Não foi possível criar o lead.", invalid_move: "A movimentação solicitada é inválida.", move_failed: "Não foi possível mover o lead. Para a etapa Perdido, informe o motivo.", invalid_archive: "Não foi possível identificar o lead.", archive_failed: "Não foi possível arquivar o lead.", stale_lead: "Esse lead foi alterado em outra sessão. A tela foi atualizada.", invalid_stage: "Revise os dados da etapa.", forbidden: "Seu perfil não pode alterar o pipeline.", pipeline_missing: "Pipeline não encontrado.", stage_limit: "O pipeline atingiu o limite de etapas.", stage_kind_exists: "Já existe uma etapa desse tipo especial.", stage_create_failed: "Não foi possível criar a etapa.", stage_update_failed: "Não foi possível renomear a etapa." };
@@ -9,13 +8,9 @@ const successMessages: Record<string, string> = { lead_created: "Lead adicionado
 export default async function AppPage({ searchParams }: AppPageProps) {
   const params = await searchParams;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: membership } = await supabase.from("organization_members").select("org_id, role").eq("user_id", user.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
-  if (!membership) redirect("/onboarding");
+  const { supabase, user, orgId, role: userRole } = await getAuthContext();
 
-  const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", membership.org_id).order("position", { ascending: true }).limit(1).maybeSingle();
+  const { data: pipeline } = await supabase.from("pipelines").select("id, name").eq("org_id", orgId).order("position", { ascending: true }).limit(1).maybeSingle();
 
   let stages: DashboardStage[] = [];
   let totalCount = 0;
@@ -32,13 +27,13 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let revenueData: DashboardRevenuePoint[] = [];
   let funnelData: DashboardFunnelStage[] = [];
 
-  const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
-  let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
+  const canSeeTeamTasks = userRole === "owner" || userRole === "admin";
+  let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", orgId).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
   if (!canSeeTeamTasks || params.tasks !== "all") taskQuery = taskQuery.eq("assigned_to", user.id);
 
   type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean };
   const stagesPromise: Promise<{ data: StageRow[] | null }> = pipeline
-    ? Promise.resolve(supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).order("position", { ascending: true }))
+    ? Promise.resolve(supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true }))
     : Promise.resolve({ data: null });
 
   // Tasks are independent of the pipeline/stage/lead lookups below, so run them
@@ -65,31 +60,31 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     type ValueRows = { data: { value_in_cents: number }[] | null };
 
     const totalCountPromise: Promise<CountResult> = Promise.resolve(
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null)
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null)
     );
 
     const openLeadsCountPromise: Promise<CountResult> = openStageIds.length
-      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
+      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
       : Promise.resolve({ count: 0 });
 
     const wonLeadsCountPromise: Promise<CountResult> = wonStageIds.length
-      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", wonStageIds))
+      ? Promise.resolve(supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", wonStageIds))
       : Promise.resolve({ count: 0 });
 
     const openRevenuePromise: Promise<ValueRows> = openStageIds.length
-      ? Promise.resolve(supabase.from("leads").select("value_in_cents").eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
+      ? Promise.resolve(supabase.from("leads").select("value_in_cents").eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).in("stage_id", openStageIds))
       : Promise.resolve({ data: [] });
 
     const last7DaysCountPromise: Promise<CountResult> = Promise.resolve(
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("created_at", sevenDaysAgoIso)
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("created_at", sevenDaysAgoIso)
     );
 
     const overdueCountPromise: Promise<CountResult> = Promise.resolve(
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).lt("follow_up_at", nowIso)
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).lt("follow_up_at", nowIso)
     );
 
     const todayCountPromise: Promise<CountResult> = Promise.resolve(
-      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("follow_up_at", todayStartIso).lte("follow_up_at", todayEndIso)
+      supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("follow_up_at", todayStartIso).lte("follow_up_at", todayEndIso)
     );
 
     // Séries agregadas dos gráficos (evolução diária, leads por origem,
@@ -104,23 +99,23 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     type FunnelRow = { stage_id: string; stage_name: string; stage_position: number; is_won: boolean; is_lost: boolean; lead_count: number; total_value_in_cents: number };
 
     const evolutionPromise: Promise<{ data: EvolutionRow[] | null }> = Promise.resolve(
-      supabase.rpc("get_dashboard_leads_evolution", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id, p_days: 30 })
+      supabase.rpc("get_dashboard_leads_evolution", { p_org_id: orgId, p_pipeline_id: pipeline.id, p_days: 30 })
     );
 
     const originPromise: Promise<{ data: OriginRow[] | null }> = Promise.resolve(
-      supabase.rpc("get_dashboard_leads_by_source", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+      supabase.rpc("get_dashboard_leads_by_source", { p_org_id: orgId, p_pipeline_id: pipeline.id })
     );
 
     const lossReasonPromise: Promise<{ data: LossReasonRow[] | null }> = Promise.resolve(
-      supabase.rpc("get_dashboard_loss_reasons", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+      supabase.rpc("get_dashboard_loss_reasons", { p_org_id: orgId, p_pipeline_id: pipeline.id })
     );
 
     const revenuePromise: Promise<{ data: RevenueRow[] | null }> = Promise.resolve(
-      supabase.rpc("get_dashboard_revenue_by_source", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+      supabase.rpc("get_dashboard_revenue_by_source", { p_org_id: orgId, p_pipeline_id: pipeline.id })
     );
 
     const funnelPromise: Promise<{ data: FunnelRow[] | null }> = Promise.resolve(
-      supabase.rpc("get_dashboard_stage_funnel", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+      supabase.rpc("get_dashboard_stage_funnel", { p_org_id: orgId, p_pipeline_id: pipeline.id })
     );
 
     const [
