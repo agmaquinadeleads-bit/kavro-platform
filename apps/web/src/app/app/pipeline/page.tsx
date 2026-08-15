@@ -17,13 +17,19 @@ const errorMessages: Record<string, string> = {
   stage_limit: "O pipeline atingiu o limite de etapas.",
   stage_kind_exists: "Já existe uma etapa desse tipo especial.",
   stage_create_failed: "Não foi possível criar a etapa.",
-  stage_update_failed: "Não foi possível renomear a etapa."
+  stage_update_failed: "Não foi possível renomear a etapa.",
+  stage_move_failed: "Não foi possível mover a etapa.",
+  stage_has_leads: "Mova os leads desta etapa para outra antes de excluí-la.",
+  stage_last_one: "O pipeline precisa ter ao menos uma etapa.",
+  stage_delete_failed: "Não foi possível excluir a etapa."
 };
 const successMessages: Record<string, string> = {
   stage_created: "Etapa criada com sucesso.",
   stage_renamed: "Etapa renomeada com sucesso.",
   lead_moved: "Lead movido com sucesso.",
-  lead_archived: "Lead arquivado com sucesso."
+  lead_archived: "Lead arquivado com sucesso.",
+  stage_moved: "Etapa reordenada com sucesso.",
+  stage_deleted: "Etapa excluída com sucesso."
 };
 
 export default async function PipelinePage({ searchParams }: PipelinePageProps) {

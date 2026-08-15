@@ -220,6 +220,66 @@ export async function renameStage(formData: FormData) {
   redirect("/app/pipeline?success=stage_renamed");
 }
 
+const moveStageSchema = z.object({ stageId: uuidSchema, direction: z.enum(["left", "right"]) });
+
+export async function moveStagePosition(formData: FormData) {
+  const input = moveStageSchema.safeParse({ stageId: formData.get("stage_id"), direction: formData.get("direction") });
+  if (!input.success) redirect("/app/pipeline?error=invalid_stage");
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
+
+  const { data: targetStage } = await supabase.from("pipeline_stages").select("id, pipeline_id, position").eq("id", input.data.stageId).eq("org_id", orgId).maybeSingle();
+  if (!targetStage) redirect("/app/pipeline?error=invalid_stage");
+
+  const { data: allStages } = await supabase.from("pipeline_stages").select("id, position").eq("org_id", orgId).eq("pipeline_id", targetStage.pipeline_id).order("position", { ascending: true });
+  const stages = allStages ?? [];
+  const currentIndex = stages.findIndex((stage) => stage.id === targetStage.id);
+  const swapIndex = input.data.direction === "left" ? currentIndex - 1 : currentIndex + 1;
+  if (currentIndex === -1 || swapIndex < 0 || swapIndex >= stages.length) redirect("/app/pipeline");
+
+  const swapStage = stages[swapIndex];
+  // pipeline_stages tem UNIQUE (org_id, pipeline_id, position) — trocar as duas
+  // posições direto violaria a constraint no meio da operação, por isso usamos
+  // um valor temporário negativo antes de aplicar as posições finais.
+  const { error: tempError } = await supabase.from("pipeline_stages").update({ position: -1 }).eq("id", targetStage.id).eq("org_id", orgId);
+  if (tempError) redirect("/app/pipeline?error=stage_move_failed");
+  const { error: swapError } = await supabase.from("pipeline_stages").update({ position: targetStage.position }).eq("id", swapStage.id).eq("org_id", orgId);
+  if (swapError) redirect("/app/pipeline?error=stage_move_failed");
+  const { error } = await supabase.from("pipeline_stages").update({ position: swapStage.position }).eq("id", targetStage.id).eq("org_id", orgId);
+  if (error) redirect("/app/pipeline?error=stage_move_failed");
+
+  revalidatePath("/app");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=stage_moved");
+}
+
+const deleteStageSchema = z.object({ stageId: uuidSchema });
+
+export async function deleteStage(formData: FormData) {
+  const input = deleteStageSchema.safeParse({ stageId: formData.get("stage_id") });
+  if (!input.success) redirect("/app/pipeline?error=invalid_stage");
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
+
+  const { data: stage } = await supabase.from("pipeline_stages").select("id, pipeline_id").eq("id", input.data.stageId).eq("org_id", orgId).maybeSingle();
+  if (!stage) redirect("/app/pipeline?error=invalid_stage");
+
+  // Bloqueia exclusão se a etapa tiver leads ativos — evita perda de dados
+  // (usuário precisa mover os leads pra outra etapa antes de excluir).
+  const { count: activeLeadsCount } = await supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("stage_id", input.data.stageId).is("deleted_at", null);
+  if ((activeLeadsCount ?? 0) > 0) redirect("/app/pipeline?error=stage_has_leads");
+
+  // Bloqueia exclusão da última etapa do pipeline (precisa ter ao menos 1).
+  const { count: totalStagesCount } = await supabase.from("pipeline_stages").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", stage.pipeline_id);
+  if ((totalStagesCount ?? 0) <= 1) redirect("/app/pipeline?error=stage_last_one");
+
+  const { error } = await supabase.from("pipeline_stages").delete().eq("id", input.data.stageId).eq("org_id", orgId);
+  if (error) redirect("/app/pipeline?error=stage_delete_failed");
+  revalidatePath("/app");
+  revalidatePath("/app/pipeline");
+  redirect("/app/pipeline?success=stage_deleted");
+}
+
 const createTaskSchema = z.object({
   leadId: uuidSchema,
   title: z.string().trim().min(1).max(160),

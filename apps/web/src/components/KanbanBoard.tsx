@@ -1,8 +1,9 @@
 "use client";
 
-import { CSSProperties, useState } from "react";
-import { archiveLead, moveLead } from "@/app/app/actions";
+import { CSSProperties, useEffect, useState } from "react";
+import { archiveLead, deleteStage, moveLead, moveStagePosition } from "@/app/app/actions";
 import { MoveLeadForm } from "@/components/move-lead-form";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { LeadDetailModal } from "./LeadDetailModal";
 import type { DashboardLead, DashboardStage } from "@/components/dashboard";
 
@@ -148,6 +149,41 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
   const [pendingLossMove, setPendingLossMove] = useState<PendingLossMove | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [openMenuStageId, setOpenMenuStageId] = useState<string | null>(null);
+  const [stageToDelete, setStageToDelete] = useState<DashboardStage | null>(null);
+  const [isDeletingStage, setIsDeletingStage] = useState(false);
+
+  // Fecha o menu de coluna aberto ao clicar em qualquer lugar fora dele.
+  useEffect(() => {
+    if (!openMenuStageId) return;
+    function handleClickOutside() {
+      setOpenMenuStageId(null);
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openMenuStageId]);
+
+  async function submitMoveStage(stageId: string, direction: "left" | "right") {
+    const fd = new FormData();
+    fd.set("stage_id", stageId);
+    fd.set("direction", direction);
+    // moveStagePosition é uma server action que faz redirect() internamente —
+    // mesmo comportamento esperado que moveLead. Não capturar nem silenciar o
+    // erro especial de redirecionamento aqui.
+    await moveStagePosition(fd);
+  }
+
+  async function submitDeleteStage(stageId: string) {
+    setIsDeletingStage(true);
+    try {
+      const fd = new FormData();
+      fd.set("stage_id", stageId);
+      // deleteStage também faz redirect() internamente — mesmo padrão acima.
+      await deleteStage(fd);
+    } finally {
+      setIsDeletingStage(false);
+    }
+  }
 
   async function submitMove(leadId: string, stageId: string, version: number, lossReason: string) {
     setIsMoving(true);
@@ -195,7 +231,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
 
   return (
     <section className="kanban real-kanban" aria-label="Pipeline">
-      {stages.map((stage) => {
+      {stages.map((stage, stageIndex) => {
         const stageLeads = leads.filter((lead) => lead.stageId === stage.id);
         return (
           <div
@@ -213,7 +249,63 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
               handleDrop(stage);
             }}
           >
-            <header><div><i className={stage.isWon ? "green" : stage.isLost ? "red" : "blue"} /><strong>{stage.name}</strong><span>{stageLeads.length}</span></div></header>
+            <header>
+              <div><i className={stage.isWon ? "green" : stage.isLost ? "red" : "blue"} /><strong>{stage.name}</strong><span>{stageLeads.length}</span></div>
+              <div className="col-menu">
+                <button
+                  type="button"
+                  className="col-menu-btn"
+                  aria-label={`Opções da etapa ${stage.name}`}
+                  aria-haspopup="true"
+                  aria-expanded={openMenuStageId === stage.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenMenuStageId((current) => (current === stage.id ? null : stage.id));
+                  }}
+                >
+                  ⋮
+                </button>
+                {openMenuStageId === stage.id ? (
+                  <div className="col-menu-dropdown" role="menu" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="col-menu-item"
+                      role="menuitem"
+                      disabled={stageIndex === 0}
+                      onClick={() => {
+                        setOpenMenuStageId(null);
+                        void submitMoveStage(stage.id, "left");
+                      }}
+                    >
+                      Mover para esquerda
+                    </button>
+                    <button
+                      type="button"
+                      className="col-menu-item"
+                      role="menuitem"
+                      disabled={stageIndex === stages.length - 1}
+                      onClick={() => {
+                        setOpenMenuStageId(null);
+                        void submitMoveStage(stage.id, "right");
+                      }}
+                    >
+                      Mover para direita
+                    </button>
+                    <button
+                      type="button"
+                      className="col-menu-item col-menu-item-danger"
+                      role="menuitem"
+                      onClick={() => {
+                        setOpenMenuStageId(null);
+                        setStageToDelete(stage);
+                      }}
+                    >
+                      Excluir etapa
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </header>
             <p>{currency(stageLeads.reduce((sum, lead) => sum + lead.valueInCents, 0))}</p>
             <div className="card-list">
               {stageLeads.map((lead) => (
@@ -279,6 +371,23 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
       ) : null}
 
       <LeadDetailModal leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} />
+
+      <ConfirmModal
+        isOpen={stageToDelete !== null}
+        title="Excluir etapa"
+        message={`Tem certeza que deseja excluir a etapa "${stageToDelete?.name ?? ""}"? Essa ação não pode ser desfeita.`}
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        isDangerous
+        isLoading={isDeletingStage}
+        onCancel={() => setStageToDelete(null)}
+        onConfirm={() => {
+          if (!stageToDelete) return;
+          const stageId = stageToDelete.id;
+          setStageToDelete(null);
+          void submitDeleteStage(stageId);
+        }}
+      />
     </section>
   );
 }
