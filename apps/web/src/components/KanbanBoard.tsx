@@ -1,9 +1,9 @@
 "use client";
 
 import { CSSProperties, useState } from "react";
-import Link from "next/link";
 import { archiveLead, moveLead } from "@/app/app/actions";
 import { MoveLeadForm } from "@/components/move-lead-form";
+import { LeadDetailModal } from "./LeadDetailModal";
 import type { DashboardLead, DashboardStage } from "@/components/dashboard";
 
 function currency(valueInCents: number) {
@@ -147,6 +147,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [pendingLossMove, setPendingLossMove] = useState<PendingLossMove | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   async function submitMove(leadId: string, stageId: string, version: number, lossReason: string) {
     setIsMoving(true);
@@ -238,12 +239,26 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                   }}
                 >
                   <div className="deal-type">{lead.source || "SEM ORIGEM"}</div>
-                  <h3><Link href={`/app/leads/${lead.id}`}>{lead.name}</Link></h3>
+                  <h3>
+                    <button
+                      type="button"
+                      className="lead-name-link"
+                      style={{ background: "none", border: 0, padding: 0, margin: 0, font: "inherit", color: "inherit", cursor: "pointer", textAlign: "left" }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedLeadId(lead.id);
+                      }}
+                    >
+                      {lead.name}
+                    </button>
+                  </h3>
                   <strong>{currency(lead.valueInCents)}</strong>
                   <p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
                   {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}
-                  <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
-                  <form action={archiveLead}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
+                  <div onClick={(event) => event.stopPropagation()}>
+                    <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
+                  </div>
+                  <form action={archiveLead} onClick={(event) => event.stopPropagation()}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
                 </article>
               ))}
             </div>
@@ -262,6 +277,8 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
           }}
         />
       ) : null}
+
+      <LeadDetailModal leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </section>
   );
 }
