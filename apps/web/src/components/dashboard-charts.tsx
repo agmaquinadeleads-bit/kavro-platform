@@ -224,7 +224,7 @@ function RevenueChart({ data }: { data: DashboardRevenuePoint[] }) {
         intersect: false,
         mode: "index" as const,
         callbacks: {
-          label: (context: TooltipItem<"bar">) => formatCurrency(Math.round(context.parsed.y * 100))
+          label: (context: TooltipItem<"bar">) => formatCurrency(Math.round((context.parsed.y ?? 0) * 100))
         }
       }
     },
