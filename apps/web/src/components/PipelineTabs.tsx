@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, useState } from "react";
+import { CSSProperties, useEffect, useState } from "react";
 import { deletePipeline, renamePipeline } from "@/app/app/actions";
 import { ConfirmModal } from "./ConfirmModal";
 import { NewPipelineModal } from "./NewPipelineModal";
@@ -23,6 +23,18 @@ export function PipelineTabs({ pipelines, activePipelineId }: PipelineTabsProps)
   const [pipelineToRename, setPipelineToRename] = useState<PipelineTabItem | null>(null);
   const [pipelineToDelete, setPipelineToDelete] = useState<PipelineTabItem | null>(null);
   const [isDeletingPipeline, setIsDeletingPipeline] = useState(false);
+  const [openMenuPipelineId, setOpenMenuPipelineId] = useState<string | null>(null);
+
+  // Fecha o menu do funil aberto ao clicar em qualquer lugar fora dele —
+  // mesmo padrão do menu de coluna no KanbanBoard.
+  useEffect(() => {
+    if (!openMenuPipelineId) return;
+    function handleClickOutside() {
+      setOpenMenuPipelineId(null);
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openMenuPipelineId]);
 
   async function submitDeletePipeline(pipelineId: string) {
     setIsDeletingPipeline(true);
@@ -49,26 +61,52 @@ export function PipelineTabs({ pipelines, activePipelineId }: PipelineTabsProps)
                 <span className="pipeline-tab-count">{pipeline.leadCount}</span>
               </Link>
               {isActive ? (
-                <button
-                  type="button"
-                  className="pipeline-tab-rename"
-                  aria-label={`Renomear funil ${pipeline.name}`}
-                  title="Renomear funil"
-                  onClick={() => setPipelineToRename(pipeline)}
-                >
-                  ✎
-                </button>
-              ) : null}
-              {isActive && !pipeline.isProtected ? (
-                <button
-                  type="button"
-                  className="pipeline-tab-delete"
-                  aria-label={`Excluir funil ${pipeline.name}`}
-                  title="Excluir funil"
-                  onClick={() => setPipelineToDelete(pipeline)}
-                >
-                  🗑
-                </button>
+                <div className="col-menu">
+                  <button
+                    type="button"
+                    className="col-menu-btn"
+                    aria-label={`Opções do funil ${pipeline.name}`}
+                    aria-haspopup="true"
+                    aria-expanded={openMenuPipelineId === pipeline.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenMenuPipelineId((current) => (current === pipeline.id ? null : pipeline.id));
+                    }}
+                  >
+                    ⋮
+                  </button>
+                  {openMenuPipelineId === pipeline.id ? (
+                    <div className="col-menu-dropdown" role="menu" onClick={(event) => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="col-menu-item"
+                        role="menuitem"
+                        onClick={() => {
+                          setOpenMenuPipelineId(null);
+                          setPipelineToRename(pipeline);
+                        }}
+                      >
+                        Renomear funil
+                      </button>
+                      {!pipeline.isProtected ? (
+                        <>
+                          <hr className="col-menu-divider" />
+                          <button
+                            type="button"
+                            className="col-menu-item col-menu-item-danger"
+                            role="menuitem"
+                            onClick={() => {
+                              setOpenMenuPipelineId(null);
+                              setPipelineToDelete(pipeline);
+                            }}
+                          >
+                            Excluir funil
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           );
