@@ -14,7 +14,7 @@ create or replace function public.get_dashboard_stage_funnel(p_org_id uuid, p_pi
 returns table(
   stage_id uuid,
   stage_name text,
-  position integer,
+  stage_position integer,
   is_won boolean,
   is_lost boolean,
   lead_count bigint,
@@ -33,7 +33,7 @@ begin
   select
     pipeline_stages.id as stage_id,
     pipeline_stages.name as stage_name,
-    pipeline_stages.position,
+    pipeline_stages.position as stage_position,
     pipeline_stages.is_won,
     pipeline_stages.is_lost,
     coalesce(count(leads.id), 0)::bigint as lead_count,

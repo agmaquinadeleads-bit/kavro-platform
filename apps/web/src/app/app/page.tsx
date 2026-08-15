@@ -101,7 +101,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     type OriginRow = { source: string; lead_count: number };
     type LossReasonRow = { loss_reason: string; lead_count: number };
     type RevenueRow = { source: string; revenue_in_cents: number };
-    type FunnelRow = { stage_id: string; stage_name: string; position: number; is_won: boolean; is_lost: boolean; lead_count: number; total_value_in_cents: number };
+    type FunnelRow = { stage_id: string; stage_name: string; stage_position: number; is_won: boolean; is_lost: boolean; lead_count: number; total_value_in_cents: number };
 
     const evolutionPromise: Promise<{ data: EvolutionRow[] | null }> = Promise.resolve(
       supabase.rpc("get_dashboard_leads_evolution", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id, p_days: 30 })
@@ -162,7 +162,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     originData = (originRows ?? []).map((row) => ({ source: row.source, leadCount: Number(row.lead_count) }));
     lossReasonData = (lossReasonRows ?? []).map((row) => ({ lossReason: row.loss_reason, leadCount: Number(row.lead_count) }));
     revenueData = (revenueRows ?? []).map((row) => ({ source: row.source, revenueInCents: Number(row.revenue_in_cents) }));
-    funnelData = (funnelRows ?? []).map((row) => ({ stageId: row.stage_id, stageName: row.stage_name, position: row.position, isWon: row.is_won, isLost: row.is_lost, leadCount: Number(row.lead_count), totalValueInCents: Number(row.total_value_in_cents) }));
+    funnelData = (funnelRows ?? []).map((row) => ({ stageId: row.stage_id, stageName: row.stage_name, position: row.stage_position, isWon: row.is_won, isLost: row.is_lost, leadCount: Number(row.lead_count), totalValueInCents: Number(row.total_value_in_cents) }));
   }
 
   tasks = (taskRows ?? []).map((task) => {
