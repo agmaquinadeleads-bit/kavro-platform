@@ -72,6 +72,7 @@ export function AppSidebar({ userName, organizationName, canSeeTeamTasks }: AppS
           <Link className={isActive("/app/pipeline") ? "active" : ""} href="/app/pipeline" onClick={closeMobileMenu}>◫ <span>Pipeline</span></Link>
           <Link className={isActive("/app/leads") ? "active" : ""} href="/app/leads" onClick={closeMobileMenu}>☰ <span>Leads</span></Link>
           <Link className={isActive("/app/whatsapp") ? "active" : ""} href="/app/whatsapp" onClick={closeMobileMenu}>◌ <span>Conversas</span></Link>
+          <Link className={pathname.startsWith("/app/conteudo") ? "active" : ""} href="/app/conteudo" onClick={closeMobileMenu}>✎ <span>Conteúdo</span></Link>
         </nav>
         <div className="sidebar-footer">
           {canSeeTeamTasks ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team" onClick={closeMobileMenu}>♙ <span>Equipe</span></Link> : null}
