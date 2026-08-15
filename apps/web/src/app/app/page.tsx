@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Dashboard, type DashboardEvolutionPoint, type DashboardOriginPoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
+import { Dashboard, type DashboardEvolutionPoint, type DashboardLossReasonPoint, type DashboardOriginPoint, type DashboardRevenuePoint, type DashboardStage, type DashboardTask } from "@/components/dashboard";
 import { createClient } from "@/lib/supabase/server";
 
 type AppPageProps = { searchParams: Promise<{ error?: string; success?: string; tasks?: string }> };
@@ -28,6 +28,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let todayFollowUpsCount = 0;
   let evolutionData: DashboardEvolutionPoint[] = [];
   let originData: DashboardOriginPoint[] = [];
+  let lossReasonData: DashboardLossReasonPoint[] = [];
+  let revenueData: DashboardRevenuePoint[] = [];
 
   const canSeeTeamTasks = membership.role === "owner" || membership.role === "admin";
   let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", membership.org_id).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
@@ -89,12 +91,15 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", membership.org_id).eq("pipeline_id", pipeline.id).is("deleted_at", null).gte("follow_up_at", todayStartIso).lte("follow_up_at", todayEndIso)
     );
 
-    // Séries agregadas dos gráficos (evolução diária + leads por origem).
-    // org_id/pipeline_id sempre vêm do contexto autenticado (membership,
-    // pipeline), nunca de input do usuário. As funções SQL revalidam
-    // org_id internamente via is_org_member (defesa em profundidade).
+    // Séries agregadas dos gráficos (evolução diária, leads por origem,
+    // razões de perda, faturamento realizado por origem). org_id/pipeline_id
+    // sempre vêm do contexto autenticado (membership, pipeline), nunca de
+    // input do usuário. As funções SQL revalidam org_id internamente via
+    // is_org_member (defesa em profundidade).
     type EvolutionRow = { day: string; lead_count: number };
     type OriginRow = { source: string; lead_count: number };
+    type LossReasonRow = { loss_reason: string; lead_count: number };
+    type RevenueRow = { source: string; revenue_in_cents: number };
 
     const evolutionPromise: Promise<{ data: EvolutionRow[] | null }> = Promise.resolve(
       supabase.rpc("get_dashboard_leads_evolution", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id, p_days: 30 })
@@ -102,6 +107,14 @@ export default async function AppPage({ searchParams }: AppPageProps) {
 
     const originPromise: Promise<{ data: OriginRow[] | null }> = Promise.resolve(
       supabase.rpc("get_dashboard_leads_by_source", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+    );
+
+    const lossReasonPromise: Promise<{ data: LossReasonRow[] | null }> = Promise.resolve(
+      supabase.rpc("get_dashboard_loss_reasons", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
+    );
+
+    const revenuePromise: Promise<{ data: RevenueRow[] | null }> = Promise.resolve(
+      supabase.rpc("get_dashboard_revenue_by_source", { p_org_id: membership.org_id, p_pipeline_id: pipeline.id })
     );
 
     const [
@@ -114,6 +127,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       { count: todayCount },
       { data: evolutionRows },
       { data: originRows },
+      { data: lossReasonRows },
+      { data: revenueRows },
     ] = await Promise.all([
       totalCountPromise,
       openLeadsCountPromise,
@@ -124,6 +139,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
       todayCountPromise,
       evolutionPromise,
       originPromise,
+      lossReasonPromise,
+      revenuePromise,
     ]);
 
     totalCount = totalLeadsCount ?? 0;
@@ -135,6 +152,8 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     todayFollowUpsCount = todayCount ?? 0;
     evolutionData = (evolutionRows ?? []).map((row) => ({ day: row.day, leadCount: Number(row.lead_count) }));
     originData = (originRows ?? []).map((row) => ({ source: row.source, leadCount: Number(row.lead_count) }));
+    lossReasonData = (lossReasonRows ?? []).map((row) => ({ lossReason: row.loss_reason, leadCount: Number(row.lead_count) }));
+    revenueData = (revenueRows ?? []).map((row) => ({ source: row.source, revenueInCents: Number(row.revenue_in_cents) }));
   }
 
   tasks = (taskRows ?? []).map((task) => {
@@ -148,5 +167,5 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const successMessage = params.success ? successMessages[params.success] : undefined;
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
 
-  return <Dashboard userName={userName} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} todayFollowUpsCount={todayFollowUpsCount} evolutionData={evolutionData} originData={originData} />;
+  return <Dashboard userName={userName} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} feedback={feedback} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} todayFollowUpsCount={todayFollowUpsCount} evolutionData={evolutionData} originData={originData} lossReasonData={lossReasonData} revenueData={revenueData} />;
 }
