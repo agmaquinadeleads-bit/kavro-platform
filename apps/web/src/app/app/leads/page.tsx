@@ -164,15 +164,19 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     { data: leadsData },
     { data: allStagesData },
     { data: originsData },
-    { data: pipelineData }
+    { data: pipelineData },
+    { data: membersData }
   ] = await Promise.all([
     countQuery,
     leadsQuery
       .order(sortBy, { ascending: sortOrder === "asc" })
       .range(offset, offset + pageSize - 1),
+    // is_won/is_lost incluídos aqui pra derivar a primeira etapa "aberta" do
+    // cadastro rápido sem precisar de uma segunda consulta a pipeline_stages
+    // (essa mesma lista já serve pro filtro/badges de etapa).
     supabase
       .from("pipeline_stages")
-      .select("id, name, position")
+      .select("id, name, position, is_won, is_lost")
       .eq("org_id", orgId)
       .order("position", { ascending: true }),
     supabase
@@ -181,29 +185,24 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       .eq("org_id", orgId)
       .is("deleted_at", null)
       .is("source", "not.is.null"),
-    pipelinePromise
+    pipelinePromise,
+    // Busca todos os membros da org de uma vez (independe da lista de leads)
+    // em vez de esperar leadsData resolver pra então buscar só os donos —
+    // elimina uma segunda onda sequencial de round-trip.
+    supabase
+      .from("organization_members")
+      .select("user_id, user_profiles(full_name)")
+      .eq("org_id", orgId)
   ]);
 
   // Etapa inicial "aberta" (nem ganho, nem perdido) do pipeline da org, usada
-  // para o cadastro rápido de lead. pipelineId/firstStageId sempre vêm de
-  // queries filtradas por org_id — nunca de input do usuário.
-  let pipelineId: string | null = null;
-  let firstStageId: string | null = null;
-
-  if (pipelineData) {
-    pipelineId = pipelineData.id;
-    const { data: pipelineStagesData } = await supabase
-      .from("pipeline_stages")
-      .select("id, is_won, is_lost")
-      .eq("org_id", orgId)
-      .eq("pipeline_id", pipelineData.id)
-      .order("position", { ascending: true });
-
-    const firstOpenStage = (pipelineStagesData ?? []).find(
-      (stage) => !stage.is_won && !stage.is_lost
-    );
-    firstStageId = firstOpenStage?.id ?? null;
-  }
+  // para o cadastro rápido de lead. pipelineId sempre vem de query filtrada
+  // por org_id — nunca de input do usuário.
+  const pipelineId: string | null = pipelineData?.id ?? null;
+  const firstOpenStage = (allStagesData ?? []).find(
+    (stage) => !stage.is_won && !stage.is_lost
+  );
+  const firstStageId: string | null = firstOpenStage?.id ?? null;
 
   const totalItems = totalCount || 0;
 
@@ -237,21 +236,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     creativeNamesMap[creative.id] = creative.name;
   });
 
-  // Fetch owner information (members with their profiles) — depends on leadsData, so it runs after
-  const ownerIds = [
-    ...new Set(
-      (leadsData ?? [])
-        .map((lead) => lead.owner_id)
-        .filter((id) => id !== null)
-    )
-  ];
-
-  const { data: membersData } = await supabase
-    .from("organization_members")
-    .select("user_id, user_profiles(full_name)")
-    .eq("org_id", orgId)
-    .in("user_id", ownerIds.length > 0 ? ownerIds : ["00000000-0000-0000-0000-000000000000"]);
-
+  // membersData já veio no Promise.all acima (todos os membros da org, sem
+  // depender da lista de leads) — só monta o mapa de nomes aqui.
   const memberMap = new Map(
     (membersData ?? []).map((member) => {
       const profile = Array.isArray(member.user_profiles)
