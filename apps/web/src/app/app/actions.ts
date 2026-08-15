@@ -88,13 +88,15 @@ export async function moveLead(formData: FormData) {
     .eq("id", input.data.leadId)
     .eq("org_id", orgId)
     .eq("version", input.data.version)
-    .select("id");
+    .select("id, pipeline_id");
 
   if (error) redirect("/app/pipeline?error=move_failed");
   if (!data?.length) redirect("/app/pipeline?error=stale_lead");
+  const movedLead = data[0];
+  if (!movedLead) redirect("/app/pipeline?error=stale_lead");
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=lead_moved");
+  redirect(`/app/pipeline?pipeline=${movedLead.pipeline_id}&success=lead_moved`);
 }
 
 const archiveLeadSchema = z.object({
@@ -116,13 +118,15 @@ export async function archiveLead(formData: FormData) {
     .eq("id", input.data.leadId)
     .eq("org_id", orgId)
     .eq("version", input.data.version)
-    .select("id");
+    .select("id, pipeline_id");
 
   if (error) redirect("/app/pipeline?error=archive_failed");
   if (!data?.length) redirect("/app/pipeline?error=stale_lead");
+  const archivedLead = data[0];
+  if (!archivedLead) redirect("/app/pipeline?error=stale_lead");
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=lead_archived");
+  redirect(`/app/pipeline?pipeline=${archivedLead.pipeline_id}&success=lead_archived`);
 }
 
 const updateLeadSchema = z.object({
@@ -180,30 +184,33 @@ export async function updateLead(formData: FormData) {
 
 const stageSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  kind: z.enum(["open", "won", "lost"])
+  kind: z.enum(["open", "won", "lost"]),
+  pipelineId: uuidSchema
 });
 
 export async function createStage(formData: FormData) {
-  const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind") });
+  const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind"), pipelineId: formData.get("pipeline_id") });
   if (!input.success) redirect("/app/pipeline?error=invalid_stage");
 
   const { supabase, orgId, role } = await authenticatedContext();
   if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
 
-  const { data: pipeline } = await supabase.from("pipelines").select("id").eq("org_id", orgId).order("position").limit(1).maybeSingle();
+  // pipeline_id vem do form (funil ativo na aba), nunca assumido como "o primeiro" —
+  // valida que pertence à org antes de usar.
+  const { data: pipeline } = await supabase.from("pipelines").select("id").eq("id", input.data.pipelineId).eq("org_id", orgId).maybeSingle();
   if (!pipeline) redirect("/app/pipeline?error=pipeline_missing");
 
   const { data: existingStages } = await supabase.from("pipeline_stages").select("position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: false });
-  if ((existingStages?.length ?? 0) >= 30) redirect("/app/pipeline?error=stage_limit");
-  if (input.data.kind === "won" && existingStages?.some((stage) => stage.is_won)) redirect("/app/pipeline?error=stage_kind_exists");
-  if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect("/app/pipeline?error=stage_kind_exists");
+  if ((existingStages?.length ?? 0) >= 30) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_limit`);
+  if (input.data.kind === "won" && existingStages?.some((stage) => stage.is_won)) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_kind_exists`);
+  if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_kind_exists`);
 
   const position = (existingStages?.[0]?.position ?? -1) + 1;
   const { error } = await supabase.from("pipeline_stages").insert({ org_id: orgId, pipeline_id: pipeline.id, name: input.data.name, position, is_won: input.data.kind === "won", is_lost: input.data.kind === "lost" });
-  if (error) redirect("/app/pipeline?error=stage_create_failed");
+  if (error) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_create_failed`);
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=stage_created");
+  redirect(`/app/pipeline?pipeline=${pipeline.id}&success=stage_created`);
 }
 
 const renameStageSchema = z.object({ stageId: uuidSchema, name: z.string().trim().min(1).max(100) });
@@ -213,11 +220,13 @@ export async function renameStage(formData: FormData) {
   if (!input.success) redirect("/app/pipeline?error=invalid_stage");
   const { supabase, orgId, role } = await authenticatedContext();
   if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
-  const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id");
+  const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id, pipeline_id");
   if (error || !data?.length) redirect("/app/pipeline?error=stage_update_failed");
+  const renamedStage = data[0];
+  if (!renamedStage) redirect("/app/pipeline?error=stage_update_failed");
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=stage_renamed");
+  redirect(`/app/pipeline?pipeline=${renamedStage.pipeline_id}&success=stage_renamed`);
 }
 
 const moveStageSchema = z.object({ stageId: uuidSchema, direction: z.enum(["left", "right"]) });
@@ -235,25 +244,25 @@ export async function moveStagePosition(formData: FormData) {
   const stages = allStages ?? [];
   const currentIndex = stages.findIndex((stage) => stage.id === targetStage.id);
   const swapIndex = input.data.direction === "left" ? currentIndex - 1 : currentIndex + 1;
-  if (currentIndex === -1 || swapIndex < 0 || swapIndex >= stages.length) redirect("/app/pipeline");
+  if (currentIndex === -1 || swapIndex < 0 || swapIndex >= stages.length) redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}`);
 
   const swapStage = stages[swapIndex];
-  if (!swapStage) redirect("/app/pipeline?error=stage_move_failed");
+  if (!swapStage) redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}&error=stage_move_failed`);
   // pipeline_stages tem UNIQUE (org_id, pipeline_id, position) E CHECK (position >= 0)
   // — trocar as duas posições direto violaria a constraint de unicidade, e um
   // valor temporário negativo violaria o check de não-negativo. Usamos um
   // sentinela positivo fora da faixa real (limite de 30 etapas por pipeline).
   const TEMP_POSITION = 999999;
   const { error: tempError } = await supabase.from("pipeline_stages").update({ position: TEMP_POSITION }).eq("id", targetStage.id).eq("org_id", orgId);
-  if (tempError) redirect("/app/pipeline?error=stage_move_failed");
+  if (tempError) redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}&error=stage_move_failed`);
   const { error: swapError } = await supabase.from("pipeline_stages").update({ position: targetStage.position }).eq("id", swapStage.id).eq("org_id", orgId);
-  if (swapError) redirect("/app/pipeline?error=stage_move_failed");
+  if (swapError) redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}&error=stage_move_failed`);
   const { error } = await supabase.from("pipeline_stages").update({ position: swapStage.position }).eq("id", targetStage.id).eq("org_id", orgId);
-  if (error) redirect("/app/pipeline?error=stage_move_failed");
+  if (error) redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}&error=stage_move_failed`);
 
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=stage_moved");
+  redirect(`/app/pipeline?pipeline=${targetStage.pipeline_id}&success=stage_moved`);
 }
 
 const deleteStageSchema = z.object({ stageId: uuidSchema });
@@ -270,17 +279,59 @@ export async function deleteStage(formData: FormData) {
   // Bloqueia exclusão se a etapa tiver leads ativos — evita perda de dados
   // (usuário precisa mover os leads pra outra etapa antes de excluir).
   const { count: activeLeadsCount } = await supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("stage_id", input.data.stageId).is("deleted_at", null);
-  if ((activeLeadsCount ?? 0) > 0) redirect("/app/pipeline?error=stage_has_leads");
+  if ((activeLeadsCount ?? 0) > 0) redirect(`/app/pipeline?pipeline=${stage.pipeline_id}&error=stage_has_leads`);
 
   // Bloqueia exclusão da última etapa do pipeline (precisa ter ao menos 1).
   const { count: totalStagesCount } = await supabase.from("pipeline_stages").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("pipeline_id", stage.pipeline_id);
-  if ((totalStagesCount ?? 0) <= 1) redirect("/app/pipeline?error=stage_last_one");
+  if ((totalStagesCount ?? 0) <= 1) redirect(`/app/pipeline?pipeline=${stage.pipeline_id}&error=stage_last_one`);
 
   const { error } = await supabase.from("pipeline_stages").delete().eq("id", input.data.stageId).eq("org_id", orgId);
-  if (error) redirect("/app/pipeline?error=stage_delete_failed");
+  if (error) redirect(`/app/pipeline?pipeline=${stage.pipeline_id}&error=stage_delete_failed`);
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
-  redirect("/app/pipeline?success=stage_deleted");
+  redirect(`/app/pipeline?pipeline=${stage.pipeline_id}&success=stage_deleted`);
+}
+
+const pipelineNameSchema = z.object({ name: z.string().trim().min(1).max(100) });
+
+export async function createPipeline(formData: FormData) {
+  const input = pipelineNameSchema.safeParse({ name: formData.get("name") });
+  if (!input.success) redirect("/app/pipeline?error=invalid_pipeline");
+
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
+
+  // Limite defensivo — evita abuso e mantém a barra de abas usável (mesmo
+  // espírito do limite de 30 etapas por pipeline em createStage).
+  const { count: pipelineCount } = await supabase.from("pipelines").select("id", { count: "exact", head: true }).eq("org_id", orgId);
+  if ((pipelineCount ?? 0) >= 10) redirect("/app/pipeline?error=pipeline_limit");
+
+  const { data: existingPipelines } = await supabase.from("pipelines").select("position").eq("org_id", orgId).order("position", { ascending: false }).limit(1);
+  const position = (existingPipelines?.[0]?.position ?? -1) + 1;
+
+  const { data: created, error } = await supabase.from("pipelines").insert({ org_id: orgId, name: input.data.name, position }).select("id").maybeSingle();
+  if (error || !created) redirect("/app/pipeline?error=pipeline_create_failed");
+
+  revalidatePath("/app");
+  revalidatePath("/app/pipeline");
+  redirect(`/app/pipeline?pipeline=${created.id}&success=pipeline_created`);
+}
+
+const renamePipelineSchema = z.object({ pipelineId: uuidSchema, name: z.string().trim().min(1).max(100) });
+
+export async function renamePipeline(formData: FormData) {
+  const input = renamePipelineSchema.safeParse({ pipelineId: formData.get("pipeline_id"), name: formData.get("name") });
+  if (!input.success) redirect("/app/pipeline?error=invalid_pipeline");
+
+  const { supabase, orgId, role } = await authenticatedContext();
+  if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
+
+  const { data, error } = await supabase.from("pipelines").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.pipelineId).eq("org_id", orgId).select("id");
+  if (error || !data?.length) redirect("/app/pipeline?error=pipeline_update_failed");
+
+  revalidatePath("/app");
+  revalidatePath("/app/pipeline");
+  redirect(`/app/pipeline?pipeline=${input.data.pipelineId}&success=pipeline_renamed`);
 }
 
 const createTaskSchema = z.object({

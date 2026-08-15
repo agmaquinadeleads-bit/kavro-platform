@@ -1,15 +1,14 @@
 "use client";
 
 import { CSSProperties } from "react";
-import { createStage } from "@/app/app/actions";
+import { createPipeline } from "@/app/app/actions";
 
-interface NewStageModalProps {
+interface NewPipelineModalProps {
   isOpen: boolean;
   onClose: () => void;
-  pipelineId: string;
 }
 
-export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProps) {
+export function NewPipelineModal({ isOpen, onClose }: NewPipelineModalProps) {
   if (!isOpen) return null;
 
   const overlayStyle: CSSProperties = {
@@ -110,11 +109,10 @@ export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProp
   return (
     <div style={overlayStyle} onClick={handleCancel}>
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-        <h2 style={titleStyle}>Nova etapa</h2>
-        <p style={subtitleStyle}>Adicione uma nova etapa ao pipeline.</p>
+        <h2 style={titleStyle}>Novo funil</h2>
+        <p style={subtitleStyle}>Crie um novo funil de vendas (ex: Pós-compra, Parceiros).</p>
 
-        <form action={createStage} style={formStyle}>
-          <input type="hidden" name="pipeline_id" value={pipelineId} />
+        <form action={createPipeline} style={formStyle}>
           <label style={labelStyle}>
             Nome*
             <input
@@ -122,17 +120,9 @@ export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProp
               name="name"
               required
               maxLength={100}
-              placeholder="Ex: Qualificação"
+              placeholder="Ex: Pós-compra"
+              autoFocus
             />
-          </label>
-
-          <label style={labelStyle}>
-            Tipo
-            <select style={inputStyle} name="kind" defaultValue="open">
-              <option value="open">Em andamento</option>
-              <option value="won">Fechamento</option>
-              <option value="lost">Perda</option>
-            </select>
           </label>
 
           <div style={buttonsStyle}>
@@ -159,7 +149,7 @@ export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProp
                 (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--primary)";
               }}
             >
-              Criar etapa
+              Criar funil
             </button>
           </div>
         </form>
