@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { SubmitButton } from "@/components/SubmitButton";
 import { getAuthContext } from "@/lib/auth-context";
-import { approveEditorialLine, approvePost, generateEditorialLine, generatePostImage, schedulePost } from "./actions";
+import { approveEditorialLine, approvePost, deleteEditorialLine, generateEditorialLine, generatePostImage, schedulePost } from "./actions";
 
 type BrandDetailPageProps = {
   params: Promise<{ brandId: string }>;
@@ -21,6 +22,8 @@ const errorMessages: Record<string, string> = {
   image_ai_not_configured: "Geração de imagem ainda não configurada nesse ambiente (falta OPENAI_API_KEY).",
   image_generation_failed: "Não foi possível gerar a imagem. Tente novamente.",
   post_approve_failed: "Não foi possível aprovar o post.",
+  line_not_draft: "Só é possível excluir linhas ainda em rascunho.",
+  line_delete_failed: "Não foi possível excluir a linha editorial.",
   invalid_schedule: "Selecione ao menos uma rede e uma data válida.",
   invalid_schedule_date: "A data de agendamento precisa ser no futuro.",
   missing_image: "Gere a imagem do post antes de agendar.",
@@ -32,7 +35,8 @@ const successMessages: Record<string, string> = {
   line_approved: "Linha editorial aprovada.",
   image_generated: "Imagem gerada com sucesso.",
   post_approved: "Post aprovado.",
-  post_scheduled: "Post agendado — a publicação acontece automaticamente no horário escolhido."
+  post_scheduled: "Post agendado — a publicação acontece automaticamente no horário escolhido.",
+  line_deleted: "Linha editorial excluída."
 };
 
 const LINE_STATUS_LABELS: Record<string, string> = {
@@ -125,7 +129,7 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
               Briefing*
               <textarea name="theme" required maxLength={4000} rows={4} placeholder="Ex: Loja de roupas femininas, tom descontraído e próximo, foco em promoções de fim de verão, sempre com CTA pro link da bio." />
             </label>
-            <button type="submit">Gerar com IA</button>
+            <SubmitButton label="Gerar com IA" pendingLabel="Gerando pauta... (pode levar até 30s)" />
           </form>
         </section>
 
@@ -147,11 +151,18 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
                       <span className={`line-status-badge ${line.status}`}>{LINE_STATUS_LABELS[line.status] ?? line.status}</span>
                     </div>
                     {line.status === "draft" ? (
-                      <form action={approveEditorialLine}>
-                        <input type="hidden" name="line_id" value={line.id} />
-                        <input type="hidden" name="brand_id" value={brand.id} />
-                        <button type="submit" className="btn-primary">Aprovar linha</button>
-                      </form>
+                      <div className="editorial-line-header-actions">
+                        <form action={approveEditorialLine}>
+                          <input type="hidden" name="line_id" value={line.id} />
+                          <input type="hidden" name="brand_id" value={brand.id} />
+                          <SubmitButton label="Aprovar linha" pendingLabel="Aprovando..." className="btn-primary" />
+                        </form>
+                        <form action={deleteEditorialLine}>
+                          <input type="hidden" name="line_id" value={line.id} />
+                          <input type="hidden" name="brand_id" value={brand.id} />
+                          <SubmitButton label="Excluir" pendingLabel="Excluindo..." className="btn-danger-text" />
+                        </form>
+                      </div>
                     ) : null}
                   </div>
                   {line.theme ? <p className="editorial-line-theme">{line.theme}</p> : null}
@@ -175,13 +186,13 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
                               <form action={generatePostImage}>
                                 <input type="hidden" name="post_id" value={post.id} />
                                 <input type="hidden" name="brand_id" value={brand.id} />
-                                <button type="submit" className="btn-secondary">Gerar imagem</button>
+                                <SubmitButton label="Gerar imagem" pendingLabel="Gerando imagem... (pode levar até 30s)" className="btn-secondary" />
                               </form>
                             ) : (
                               <form action={approvePost}>
                                 <input type="hidden" name="post_id" value={post.id} />
                                 <input type="hidden" name="brand_id" value={brand.id} />
-                                <button type="submit" className="btn-primary">Aprovar post</button>
+                                <SubmitButton label="Aprovar post" pendingLabel="Aprovando..." className="btn-primary" />
                               </form>
                             )}
                           </div>
@@ -203,7 +214,7 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
                                 </label>
                               ))}
                             </div>
-                            <button type="submit" className="btn-primary">Agendar publicação</button>
+                            <SubmitButton label="Agendar publicação" pendingLabel="Agendando..." className="btn-primary" />
                           </form>
                         ) : null}
 

@@ -107,6 +107,10 @@ button { cursor:pointer; }
 .editorial-line-card { padding:18px; border:1px solid var(--line); border-radius:13px; background:var(--surface); display:grid; gap:12px; }
 .editorial-line-header { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .editorial-line-header h3 { margin:0 0 6px; font-size:15px; }
+.editorial-line-header-actions { display:flex; align-items:center; gap:6px; }
+.btn-danger-text { background:none; border:0; padding:8px 10px; color:#b3261e; font-size:12px; font-weight:600; cursor:pointer; }
+.btn-danger-text:hover { text-decoration:underline; }
+.btn-danger-text:disabled { color:var(--muted); cursor:not-allowed; text-decoration:none; }
 .editorial-line-theme { margin:0; padding-bottom:10px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12.5px; line-height:1.5; }
 .line-status-badge { display:inline-flex; padding:3px 8px; border-radius:20px; background:var(--canvas); color:var(--muted); font-size:10px; font-weight:700; }
 .line-status-badge.approved { background:var(--hover); color:var(--primary); }

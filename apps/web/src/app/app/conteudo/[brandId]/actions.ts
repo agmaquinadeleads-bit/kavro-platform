@@ -127,6 +127,31 @@ export async function approveEditorialLine(formData: FormData) {
   redirect(`/app/conteudo/${input.data.brandId}?line=${input.data.lineId}&success=line_approved`);
 }
 
+const deleteLineSchema = z.object({ lineId: z.string().uuid(), brandId: z.string().uuid() });
+
+// Só permite excluir linhas ainda em rascunho (nunca aprovadas) — evita
+// apagar conteúdo que já virou post agendado/publicado. Serve pra limpar
+// gerações duplicadas ou testes.
+export async function deleteEditorialLine(formData: FormData) {
+  const rawBrandId = formData.get("brand_id");
+  const input = deleteLineSchema.safeParse({ lineId: formData.get("line_id"), brandId: rawBrandId });
+  if (!input.success) redirect(`/app/conteudo/${rawBrandId}?error=invalid_line`);
+
+  const { supabase, orgId, role } = await getAuthContext();
+  if (role !== "owner" && role !== "admin") redirect(`/app/conteudo/${input.data.brandId}?error=forbidden`);
+
+  const { data: line } = await supabase.from("editorial_lines").select("id, status").eq("id", input.data.lineId).eq("org_id", orgId).maybeSingle();
+  if (!line) redirect(`/app/conteudo/${input.data.brandId}?error=invalid_line`);
+  if (line.status !== "draft") redirect(`/app/conteudo/${input.data.brandId}?error=line_not_draft`);
+
+  await supabase.from("content_posts").delete().eq("org_id", orgId).eq("editorial_line_id", input.data.lineId);
+  const { error } = await supabase.from("editorial_lines").delete().eq("id", input.data.lineId).eq("org_id", orgId);
+  if (error) redirect(`/app/conteudo/${input.data.brandId}?error=line_delete_failed`);
+
+  revalidatePath(`/app/conteudo/${input.data.brandId}`);
+  redirect(`/app/conteudo/${input.data.brandId}?success=line_deleted`);
+}
+
 const generateImageSchema = z.object({ postId: z.string().uuid(), brandId: z.string().uuid() });
 
 export async function generatePostImage(formData: FormData) {
