@@ -7,9 +7,14 @@ import { createClient } from "@/lib/supabase/server";
 
 const uuidSchema = z.string().uuid();
 
+// getSession() em vez de getUser(): o proxy.ts (middleware) já valida a
+// sessão via rede em toda requisição antes desse código rodar — repetir
+// com getUser() aqui só dobra a latência de auth em cada ação sem ganho de
+// segurança. Mesmo raciocínio de lib/auth-context.ts.
 async function authenticatedContext() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) redirect("/login");
 
   const { data: membership } = await supabase

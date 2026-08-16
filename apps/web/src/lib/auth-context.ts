@@ -8,9 +8,18 @@ import { createClient } from "@/lib/supabase/server";
 // chamada em vez de repetir as consultas de auth/membership — evita pagar
 // duas vezes o round-trip pro Supabase Auth + organization_members em toda
 // navegação, que era uma causa real de lentidão.
+//
+// Usa getSession() (decodifica o JWT localmente) em vez de getUser()
+// (valida via rede a cada chamada) — o proxy.ts (middleware) já roda em
+// toda requisição protegida e já validou/renovou a sessão via getUser()
+// antes desse código executar, então repetir a validação de rede aqui só
+// dobra a latência de auth em cada navegação sem ganho de segurança. Esse
+// é o padrão avançado documentado pelo próprio Supabase para SSR com
+// middleware: só o middleware precisa da validação com round-trip.
 export const getAuthContext = cache(async () => {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) redirect("/login");
 
   const { data: membership } = await supabase
