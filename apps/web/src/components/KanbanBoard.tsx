@@ -365,6 +365,17 @@ type KanbanBoardProps = {
 };
 
 export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
+  // Estado local otimista: mover um lead via drag-and-drop precisa parecer
+  // instantâneo. moveLead() faz redirect() (refaz a página inteira no
+  // servidor), então sem isso o card só troca de coluna depois do
+  // round-trip completo. Aqui a UI já reflete o novo estágio na hora do
+  // drop; quando a resposta do servidor chega (via redirect/revalidate),
+  // o efeito abaixo resincroniza com os dados reais.
+  const [localLeads, setLocalLeads] = useState(leads);
+  useEffect(() => {
+    setLocalLeads(leads);
+  }, [leads]);
+
   const [draggedLead, setDraggedLead] = useState<DraggedLead | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [pendingLossMove, setPendingLossMove] = useState<PendingLossMove | null>(null);
@@ -426,6 +437,10 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     }
   }
 
+  function moveLeadLocally(leadId: string, stageId: string) {
+    setLocalLeads((current) => current.map((lead) => (lead.id === leadId ? { ...lead, stageId } : lead)));
+  }
+
   function handleDrop(targetStage: DashboardStage) {
     if (!draggedLead || isMoving) return;
     if (draggedLead.stageId === targetStage.id) {
@@ -435,7 +450,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     }
 
     if (targetStage.isLost) {
-      const lead = leads.find((item) => item.id === draggedLead.leadId);
+      const lead = localLeads.find((item) => item.id === draggedLead.leadId);
       setPendingLossMove({
         leadId: draggedLead.leadId,
         leadName: lead?.name ?? "",
@@ -448,7 +463,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     }
 
     if (targetStage.isWon) {
-      const lead = leads.find((item) => item.id === draggedLead.leadId);
+      const lead = localLeads.find((item) => item.id === draggedLead.leadId);
       setPendingWonMove({
         leadId: draggedLead.leadId,
         leadName: lead?.name ?? "",
@@ -463,13 +478,14 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     const { leadId, version } = draggedLead;
     setDraggedLead(null);
     setDragOverStageId(null);
+    moveLeadLocally(leadId, targetStage.id);
     void submitMove(leadId, targetStage.id, version, "");
   }
 
   return (
     <section className="kanban real-kanban" aria-label="Pipeline">
       {stages.map((stage, stageIndex) => {
-        const stageLeads = leads.filter((lead) => lead.stageId === stage.id);
+        const stageLeads = localLeads.filter((lead) => lead.stageId === stage.id);
         return (
           <div
             className={`column${dragOverStageId === stage.id ? " drag-over" : ""}${stage.isLost ? " column-loss" : ""}`}
@@ -630,6 +646,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
           onConfirm={(reason) => {
             const { leadId, stageId, version } = pendingLossMove;
             setPendingLossMove(null);
+            moveLeadLocally(leadId, stageId);
             void submitMove(leadId, stageId, version, reason);
           }}
         />
@@ -642,6 +659,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
           onConfirm={(product) => {
             const { leadId, stageId, version } = pendingWonMove;
             setPendingWonMove(null);
+            moveLeadLocally(leadId, stageId);
             void submitMove(leadId, stageId, version, "", product);
           }}
         />
