@@ -188,11 +188,9 @@ export default async function AppPage({ searchParams }: AppPageProps) {
     return { id: task.id, leadId: task.lead_id, leadName: relatedLead?.name ?? "Lead", title: task.title, dueAt: task.due_at, assignedTo: task.assigned_to, version: task.version };
   });
 
-  const metadataName = user.user_metadata?.full_name;
-  const userName = typeof metadataName === "string" && metadataName.trim() ? metadataName.trim() : user.email?.split("@")[0] ?? "Usuário";
   const errorMessage = params.error ? errorMessages[params.error] : undefined;
   const successMessage = params.success ? successMessages[params.success] : undefined;
   const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
 
-  return <Dashboard userName={userName} tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} feedback={feedback} dateFrom={dateFrom} dateTo={dateTo} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} todayFollowUpsCount={todayFollowUpsCount} evolutionData={evolutionData} originData={originData} lossReasonData={lossReasonData} revenueData={revenueData} funnelData={funnelData} />;
+  return <Dashboard tasks={tasks} taskScope={canSeeTeamTasks && params.tasks === "all" ? "all" : "mine"} canSeeTeamTasks={canSeeTeamTasks} totalCount={totalCount} feedback={feedback} dateFrom={dateFrom} dateTo={dateTo} openLeadsCount={openLeadsCount} wonLeadsCount={wonLeadsCount} openRevenueInCents={openRevenueInCents} leadsLast7Days={leadsLast7Days} overdueFollowUpsCount={overdueFollowUpsCount} todayFollowUpsCount={todayFollowUpsCount} evolutionData={evolutionData} originData={originData} lossReasonData={lossReasonData} revenueData={revenueData} funnelData={funnelData} />;
 }

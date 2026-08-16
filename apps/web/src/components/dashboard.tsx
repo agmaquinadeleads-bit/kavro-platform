@@ -19,7 +19,6 @@ export type DashboardFunnelStage = { stageId: string; stageName: string; positio
 export type { DashboardEvolutionPoint, DashboardOriginPoint, DashboardLossReasonPoint, DashboardRevenuePoint };
 
 type DashboardProps = {
-  userName: string;
   tasks: DashboardTask[];
   taskScope: "mine" | "all";
   canSeeTeamTasks: boolean;
@@ -56,7 +55,7 @@ function stageKind(stage: DashboardFunnelStage): "green" | "red" | "blue" {
   return stage.isWon ? "green" : stage.isLost ? "red" : "blue";
 }
 
-export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCount, feedback, dateFrom, dateTo, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData, funnelData }: DashboardProps) {
+export function Dashboard({ tasks, taskScope, canSeeTeamTasks, totalCount, feedback, dateFrom, dateTo, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData, funnelData }: DashboardProps) {
   const closedTotal = openLeadsCount + wonLeadsCount;
   const conversionRate = closedTotal > 0 ? Math.round((wonLeadsCount / closedTotal) * 100) : 0;
   const averageTicketInCents = openLeadsCount > 0 ? Math.round(openRevenueInCents / openLeadsCount) : 0;
@@ -85,8 +84,6 @@ export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCo
   });
 
   return (
-    <>
-      <header className="topbar"><div><p>AMBIENTE DE HOMOLOGAÇÃO</p><h1>Olá, {userName}</h1></div><div className="top-actions"><a className="primary-link" href="/app/leads">+ Novo lead</a></div></header>
       <div className="content" id="dashboard">
           {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
           <DashboardFilterBar currentFilters={{ dateFrom, dateTo }} />
@@ -121,7 +118,6 @@ export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCo
             <div className="task-center-header"><div><p className="eyebrow">AGENDA COMERCIAL</p><h2 id="task-center-title">Tarefas pendentes</h2></div>{canSeeTeamTasks ? <nav aria-label="Escopo das tarefas"><a className={taskScope === "mine" ? "active" : ""} href="/app?tasks=mine">Minhas</a><a className={taskScope === "all" ? "active" : ""} href="/app?tasks=all">Equipe</a></nav> : null}</div>
             {tasks.length ? <div className="task-center-list">{tasks.map((task) => { const due = taskDueState(task.dueAt); return <Link href={`/app/leads/${task.leadId}`} className="task-center-item" key={task.id}><span className={`task-due-dot ${due.kind}`} /><div><strong>{task.title}</strong><small>{task.leadName}</small></div><time className={due.kind}>{due.label}</time></Link>; })}</div> : <div className="task-center-empty"><strong>Nenhuma tarefa pendente</strong><span>As próximas ações dos seus leads aparecerão aqui.</span></div>}
           </section>
-        </div>
-    </>
+      </div>
   );
 }
