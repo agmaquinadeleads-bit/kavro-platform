@@ -6,6 +6,7 @@ import {
   approveEditorialLine,
   approvePost,
   deleteEditorialLine,
+  deletePost,
   generateEditorialLine,
   generatePostImage,
   schedulePost
@@ -29,8 +30,10 @@ const errorMessages: Record<string, string> = {
   image_ai_not_configured: "Geração de imagem ainda não configurada nesse ambiente (falta OPENAI_API_KEY).",
   image_generation_failed: "Não foi possível gerar a imagem. Tente novamente.",
   post_approve_failed: "Não foi possível aprovar o post.",
-  line_not_draft: "Só é possível excluir linhas ainda em rascunho.",
+  line_has_committed_posts: "Essa linha tem posts agendados ou publicados — não é possível excluir.",
   line_delete_failed: "Não foi possível excluir a linha editorial.",
+  post_not_deletable: "Esse post já está agendado ou publicado — não é possível excluir.",
+  post_delete_failed: "Não foi possível excluir o post.",
   invalid_schedule: "Selecione ao menos uma rede e uma data válida.",
   invalid_schedule_date: "A data de agendamento precisa ser no futuro.",
   missing_image: "Gere a imagem do post antes de agendar.",
@@ -43,8 +46,11 @@ const successMessages: Record<string, string> = {
   image_generated: "Imagem gerada com sucesso.",
   post_approved: "Post aprovado.",
   post_scheduled: "Post agendado — a publicação acontece automaticamente no horário escolhido.",
-  line_deleted: "Linha editorial excluída."
+  line_deleted: "Linha editorial excluída.",
+  post_deleted: "Post excluído."
 };
+
+const NON_DELETABLE_POST_STATUSES = new Set(["scheduled", "publishing", "published"]);
 
 const LINE_STATUS_LABELS: Record<string, string> = {
   draft: "Rascunho",
@@ -184,6 +190,7 @@ export default async function BrandMonthPage({ params, searchParams }: MonthPage
             {lines.map((line) => {
               const linePosts = postsByLine.get(line.id) ?? [];
               const lineApproved = line.status === "approved";
+              const lineHasCommittedPost = linePosts.some((post) => NON_DELETABLE_POST_STATUSES.has(post.status));
               return (
                 <article key={line.id} className="editorial-line-card">
                   <div className="editorial-line-header">
@@ -191,22 +198,24 @@ export default async function BrandMonthPage({ params, searchParams }: MonthPage
                       <h3>{line.name}</h3>
                       <span className={`line-status-badge ${line.status}`}>{LINE_STATUS_LABELS[line.status] ?? line.status}</span>
                     </div>
-                    {line.status === "draft" ? (
-                      <div className="editorial-line-header-actions">
+                    <div className="editorial-line-header-actions">
+                      {line.status === "draft" ? (
                         <form action={approveEditorialLine}>
                           <input type="hidden" name="line_id" value={line.id} />
                           <input type="hidden" name="brand_id" value={brand.id} />
                           <input type="hidden" name="target_month" value={targetMonth} />
                           <SubmitButton label="Aprovar linha" pendingLabel="Aprovando..." className="btn-primary" />
                         </form>
+                      ) : null}
+                      {!lineHasCommittedPost ? (
                         <form action={deleteEditorialLine}>
                           <input type="hidden" name="line_id" value={line.id} />
                           <input type="hidden" name="brand_id" value={brand.id} />
                           <input type="hidden" name="target_month" value={targetMonth} />
                           <SubmitButton label="Excluir" pendingLabel="Excluindo..." className="btn-danger-text" />
                         </form>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
                   {line.theme ? <p className="editorial-line-theme">{line.theme}</p> : null}
 
@@ -219,8 +228,11 @@ export default async function BrandMonthPage({ params, searchParams }: MonthPage
                         </div>
 
                         {post.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={post.image_url} alt="" className="editorial-post-image" />
+                          <div className="editorial-post-image-wrap">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={post.image_url} alt="" className="editorial-post-image" />
+                            <a href={post.image_url} download target="_blank" rel="noopener noreferrer" className="post-image-download-link">Baixar imagem</a>
+                          </div>
                         ) : null}
 
                         {lineApproved && post.status === "draft" ? (
@@ -284,6 +296,15 @@ export default async function BrandMonthPage({ params, searchParams }: MonthPage
                             {" · "}
                             {post.target_providers.map((provider) => PROVIDER_LABELS[provider] ?? provider).join(", ")}
                           </p>
+                        ) : null}
+
+                        {!NON_DELETABLE_POST_STATUSES.has(post.status) ? (
+                          <form action={deletePost} className="post-delete-form">
+                            <input type="hidden" name="post_id" value={post.id} />
+                            <input type="hidden" name="brand_id" value={brand.id} />
+                            <input type="hidden" name="target_month" value={targetMonth} />
+                            <SubmitButton label="Excluir post" pendingLabel="Excluindo..." className="btn-danger-text" />
+                          </form>
                         ) : null}
                       </div>
                     ))}

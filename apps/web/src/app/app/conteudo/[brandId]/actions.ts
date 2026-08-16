@@ -12,6 +12,12 @@ type PostIdea = { caption: string; imagePrompt: string };
 
 const targetMonthSchema = z.string().regex(/^\d{4}-\d{2}-01$/);
 
+// Post/linha "comprometidos" com uma publicação real (agendada, em
+// publicação ou já publicada) não podem ser excluídos — excluir aqui não
+// cancela nada do lado da Meta, então isso evitaria perder o único
+// registro do que foi (ou vai ser) publicado de fato.
+const NON_DELETABLE_POST_STATUSES = ["scheduled", "publishing", "published"];
+
 // Toda action nessa página recebe brand_id + target_month como hidden
 // fields (o mês vem implícito de qual página o usuário está, não de um
 // seletor manual) — esse helper monta o caminho de volta pra visão micro
@@ -147,9 +153,9 @@ export async function approveEditorialLine(formData: FormData) {
 
 const deleteLineSchema = z.object({ lineId: z.string().uuid(), brandId: z.string().uuid(), targetMonth: targetMonthSchema });
 
-// Só permite excluir linhas ainda em rascunho (nunca aprovadas) — evita
-// apagar conteúdo que já virou post agendado/publicado. Serve pra limpar
-// gerações duplicadas ou testes.
+// Permite excluir a linha (rascunho ou aprovada) desde que nenhum post
+// dela já esteja agendado/publicando/publicado — nesse caso a exclusão é
+// bloqueada, porque excluir aqui não desfaz nada do lado da Meta.
 export async function deleteEditorialLine(formData: FormData) {
   const rawBrandId = formData.get("brand_id");
   const input = deleteLineSchema.safeParse({ lineId: formData.get("line_id"), brandId: rawBrandId, targetMonth: formData.get("target_month") });
@@ -159,9 +165,12 @@ export async function deleteEditorialLine(formData: FormData) {
   const { supabase, orgId, role } = await getAuthContext();
   if (role !== "owner" && role !== "admin") redirect(`${backPath}?error=forbidden`);
 
-  const { data: line } = await supabase.from("editorial_lines").select("id, status").eq("id", input.data.lineId).eq("org_id", orgId).maybeSingle();
+  const { data: line } = await supabase.from("editorial_lines").select("id").eq("id", input.data.lineId).eq("org_id", orgId).maybeSingle();
   if (!line) redirect(`${backPath}?error=invalid_line`);
-  if (line.status !== "draft") redirect(`${backPath}?error=line_not_draft`);
+
+  const { data: linePosts } = await supabase.from("content_posts").select("status").eq("org_id", orgId).eq("editorial_line_id", input.data.lineId);
+  const hasCommittedPost = (linePosts ?? []).some((post) => NON_DELETABLE_POST_STATUSES.includes(post.status));
+  if (hasCommittedPost) redirect(`${backPath}?error=line_has_committed_posts`);
 
   await supabase.from("content_posts").delete().eq("org_id", orgId).eq("editorial_line_id", input.data.lineId);
   const { error } = await supabase.from("editorial_lines").delete().eq("id", input.data.lineId).eq("org_id", orgId);
@@ -169,6 +178,31 @@ export async function deleteEditorialLine(formData: FormData) {
 
   revalidatePath(backPath);
   redirect(`${backPath}?success=line_deleted`);
+}
+
+const deletePostSchema = z.object({ postId: z.string().uuid(), brandId: z.string().uuid(), targetMonth: targetMonthSchema });
+
+// Mesma proteção do deleteEditorialLine, no nível do post individual —
+// dá pra excluir em qualquer estágio (rascunho, aprovado, falho) até o
+// momento em que ele entra de fato na fila/publicação.
+export async function deletePost(formData: FormData) {
+  const rawBrandId = formData.get("brand_id");
+  const input = deletePostSchema.safeParse({ postId: formData.get("post_id"), brandId: rawBrandId, targetMonth: formData.get("target_month") });
+  if (!input.success) redirect(`/app/conteudo/${rawBrandId}?error=invalid_post`);
+
+  const backPath = monthPath(input.data.brandId, input.data.targetMonth);
+  const { supabase, orgId, role } = await getAuthContext();
+  if (role !== "owner" && role !== "admin") redirect(`${backPath}?error=forbidden`);
+
+  const { data: post } = await supabase.from("content_posts").select("id, status").eq("id", input.data.postId).eq("org_id", orgId).maybeSingle();
+  if (!post) redirect(`${backPath}?error=invalid_post`);
+  if (NON_DELETABLE_POST_STATUSES.includes(post.status)) redirect(`${backPath}?error=post_not_deletable`);
+
+  const { error } = await supabase.from("content_posts").delete().eq("id", input.data.postId).eq("org_id", orgId);
+  if (error) redirect(`${backPath}?error=post_delete_failed`);
+
+  revalidatePath(backPath);
+  redirect(`${backPath}?success=post_deleted`);
 }
 
 const generateImageSchema = z.object({

@@ -122,7 +122,11 @@ button { cursor:pointer; }
 .post-status-badge.approved, .post-status-badge.scheduled { background:var(--hover); color:var(--primary); border-color:transparent; }
 .post-status-badge.published { background:#dcf4e7; color:#167246; border-color:transparent; }
 .post-status-badge.failed { background:#fbe9e9; color:#b23434; border-color:transparent; }
+.editorial-post-image-wrap { display:grid; gap:6px; justify-items:start; }
 .editorial-post-image { width:100%; max-width:280px; border-radius:8px; border:1px solid var(--line); display:block; }
+.post-image-download-link { font-size:11px; font-weight:600; color:var(--primary); text-decoration:none; }
+.post-image-download-link:hover { text-decoration:underline; }
+.post-delete-form { padding-top:8px; }
 .editorial-post-actions { display:flex; gap:8px; }
 .post-schedule-form { display:grid; gap:10px; padding-top:10px; border-top:1px solid var(--line); }
 .post-schedule-form label { display:grid; gap:5px; color:var(--muted); font-size:11px; font-weight:700; }
