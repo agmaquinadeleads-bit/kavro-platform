@@ -131,6 +131,25 @@ button { cursor:pointer; }
 .post-schedule-providers label { flex-direction:row; align-items:center; gap:6px; font-weight:500; font-size:12px; color:var(--ink); }
 .post-schedule-form button { justify-self:start; }
 .editorial-post-schedule-info { margin:0; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
+.post-image-form { display:grid; gap:8px; padding:11px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
+.post-image-form label { display:grid; gap:5px; color:var(--muted); font-size:11px; font-weight:700; }
+.post-image-form textarea { border:1px solid var(--line); border-radius:7px; padding:8px; font:inherit; font-size:12px; resize:vertical; }
+.post-image-form input[type="file"] { font-size:11px; }
+.post-image-form-hint { margin:0; color:var(--muted); font-size:10.5px; font-style:italic; }
+.post-image-form button { justify-self:start; }
+.brand-card-header-actions { display:flex; align-items:center; gap:8px; }
+.calendar-year-nav { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:18px; }
+.calendar-year-nav h2 { margin:0; font-size:20px; min-width:64px; text-align:center; }
+.calendar-month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.calendar-month-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+.calendar-month-card { display:grid; gap:6px; padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--surface); text-decoration:none; color:inherit; transition:border-color .15s ease, background-color .15s ease; }
+.calendar-month-card:hover { border-color:var(--primary); background:var(--hover); }
+.calendar-month-card h3 { margin:0; font-size:14px; color:var(--ink); }
+.calendar-month-card p { margin:0; color:var(--muted); font-size:11px; }
+.calendar-month-card.current { border-color:var(--primary); }
+.calendar-month-card.has-content { border-color:var(--green); }
+.calendar-month-card.has-content p { color:var(--green-dark); font-weight:600; }
+.calendar-month-empty { font-style:italic; }
 @media (max-width:640px) { .editorial-generate-form { grid-template-columns:1fr; } .editorial-generate-form .full-field { grid-column:auto; } }
 .lead-create-panel { margin-top:16px; display:grid; grid-template-columns:220px 1fr; gap:28px; padding:22px; border:1px solid var(--line); border-radius:13px; background:white; }.lead-create-panel h2 { margin:6px 0; font-size:19px; }.lead-create-panel > div > p:last-child { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }.lead-create-panel form { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)) auto; gap:10px; align-items:end; }.lead-create-panel label { display:grid; gap:6px; color:#536159; font-size:10px; font-weight:750; }.lead-create-panel input { min-width:0; height:40px; padding:0 10px; border:1px solid #dfe5e1; border-radius:8px; outline:none; }.lead-create-panel input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.08); }.lead-create-panel button { height:40px; padding:0 15px; border:0; border-radius:8px; background:var(--primary); color:white; font-size:11px; font-weight:750; }
 .kanban { display:grid; grid-template-columns:repeat(3,minmax(250px,1fr)); gap:14px; overflow:auto; padding-bottom:10px; }

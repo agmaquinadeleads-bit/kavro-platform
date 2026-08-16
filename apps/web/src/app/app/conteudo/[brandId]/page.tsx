@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { SubmitButton } from "@/components/SubmitButton";
 import { getAuthContext } from "@/lib/auth-context";
-import { approveEditorialLine, approvePost, deleteEditorialLine, generateEditorialLine, generatePostImage, schedulePost } from "./actions";
 
-type BrandDetailPageProps = {
+type BrandCalendarPageProps = {
   params: Promise<{ brandId: string }>;
-  searchParams: Promise<{ error?: string; success?: string; line?: string }>;
+  searchParams: Promise<{ year?: string; error?: string; success?: string }>;
 };
 
 const errorMessages: Record<string, string> = {
@@ -15,7 +13,7 @@ const errorMessages: Record<string, string> = {
   line_create_failed: "Não foi possível criar a linha editorial.",
   ai_generation_failed: "A IA não conseguiu gerar a pauta. Tente reduzir a quantidade de posts ou simplificar o briefing.",
   posts_create_failed: "A linha foi criada, mas não foi possível salvar os posts gerados.",
-  forbidden: "Seu perfil não pode aprovar conteúdo.",
+  forbidden: "Seu perfil não pode fazer essa ação.",
   line_approve_failed: "Não foi possível aprovar a linha editorial.",
   invalid_post: "Post não encontrado.",
   missing_image_prompt: "Esse post não tem uma descrição de imagem gerada pela IA.",
@@ -30,35 +28,13 @@ const errorMessages: Record<string, string> = {
   provider_not_connected: "Uma das redes escolhidas não está conectada pra essa marca.",
   schedule_failed: "Não foi possível agendar o post."
 };
-const successMessages: Record<string, string> = {
-  line_generated: "Linha editorial gerada com sucesso — revise os posts abaixo.",
-  line_approved: "Linha editorial aprovada.",
-  image_generated: "Imagem gerada com sucesso.",
-  post_approved: "Post aprovado.",
-  post_scheduled: "Post agendado — a publicação acontece automaticamente no horário escolhido.",
-  line_deleted: "Linha editorial excluída."
-};
 
-const LINE_STATUS_LABELS: Record<string, string> = {
-  draft: "Rascunho",
-  pending_approval: "Aguardando aprovação",
-  approved: "Aprovada",
-  archived: "Arquivada"
-};
+const MONTH_LABELS = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
 
-const POST_STATUS_LABELS: Record<string, string> = {
-  draft: "Rascunho",
-  pending_approval: "Aguardando aprovação",
-  approved: "Aprovado — pronto pra agendar",
-  scheduled: "Agendado",
-  publishing: "Publicando...",
-  published: "Publicado",
-  failed: "Falha na publicação"
-};
-
-const PROVIDER_LABELS: Record<string, string> = { instagram: "Instagram", facebook: "Facebook" };
-
-export default async function BrandDetailPage({ params, searchParams }: BrandDetailPageProps) {
+export default async function BrandCalendarPage({ params, searchParams }: BrandCalendarPageProps) {
   const { brandId } = await params;
   const search = await searchParams;
   const { supabase, orgId } = await getAuthContext();
@@ -66,42 +42,37 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
   const { data: brand } = await supabase.from("brands").select("id, name").eq("id", brandId).eq("org_id", orgId).maybeSingle();
   if (!brand) notFound();
 
-  type EditorialLineRow = { id: string; name: string; theme: string | null; status: string; created_at: string };
-  type ContentPostRow = {
-    id: string;
-    editorial_line_id: string | null;
-    caption: string | null;
-    status: string;
-    image_url: string | null;
-    scheduled_at: string | null;
-    target_providers: string[];
-  };
-  type ConnectionRow = { provider: "instagram" | "facebook" };
+  const currentYear = new Date().getFullYear();
+  const year = Number(search.year) && Number(search.year) >= 2000 && Number(search.year) <= 2100 ? Number(search.year) : currentYear;
 
-  const [{ data: lineRows }, { data: postRows }, { data: connectionRows }] = await Promise.all([
-    supabase.from("editorial_lines").select("id, name, theme, status, created_at").eq("org_id", orgId).eq("brand_id", brandId).order("created_at", { ascending: false }),
-    supabase.from("content_posts").select("id, editorial_line_id, caption, status, image_url, scheduled_at, target_providers").eq("org_id", orgId).eq("brand_id", brandId),
-    supabase.from("social_connections").select("provider").eq("org_id", orgId).eq("brand_id", brandId).eq("status", "connected")
+  type EditorialLineRow = { id: string; target_month: string };
+  type ContentPostRow = { editorial_line_id: string | null };
+
+  const [{ data: lineRows }, { data: postRows }] = await Promise.all([
+    supabase.from("editorial_lines").select("id, target_month").eq("org_id", orgId).eq("brand_id", brandId),
+    supabase.from("content_posts").select("editorial_line_id").eq("org_id", orgId).eq("brand_id", brandId)
   ]);
 
   const lines: EditorialLineRow[] = lineRows ?? [];
   const posts: ContentPostRow[] = postRows ?? [];
-  const connectedProviders: string[] = ((connectionRows ?? []) as ConnectionRow[]).map((connection) => connection.provider);
-  const postsByLine = new Map<string, ContentPostRow[]>();
+
+  const monthOfLine = new Map<string, string>();
+  const lineCountByMonth = new Map<string, number>();
+  for (const line of lines) {
+    const monthKey = line.target_month.slice(0, 7);
+    monthOfLine.set(line.id, monthKey);
+    lineCountByMonth.set(monthKey, (lineCountByMonth.get(monthKey) ?? 0) + 1);
+  }
+
+  const postCountByMonth = new Map<string, number>();
   for (const post of posts) {
     if (!post.editorial_line_id) continue;
-    const list = postsByLine.get(post.editorial_line_id) ?? [];
-    list.push(post);
-    postsByLine.set(post.editorial_line_id, list);
+    const monthKey = monthOfLine.get(post.editorial_line_id);
+    if (!monthKey) continue;
+    postCountByMonth.set(monthKey, (postCountByMonth.get(monthKey) ?? 0) + 1);
   }
 
   const errorMessage = search.error ? errorMessages[search.error] : undefined;
-  const successMessage = search.success ? successMessages[search.success] : undefined;
-  const feedback = errorMessage
-    ? { kind: "error" as const, message: errorMessage }
-    : successMessage
-      ? { kind: "success" as const, message: successMessage }
-      : undefined;
 
   return (
     <>
@@ -111,128 +82,38 @@ export default async function BrandDetailPage({ params, searchParams }: BrandDet
           <Link href="/app/conteudo" className="btn-secondary">← Marcas</Link>
         </div>
       </header>
-      <div className="content" id="conteudo-brand">
-        {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
+      <div className="content" id="conteudo-brand-calendar">
+        {errorMessage ? <div className="feedback error" role="alert">{errorMessage}</div> : null}
 
-        {connectedProviders.length === 0 ? (
-          <div className="feedback error" role="alert">Conecte o Instagram e/ou Facebook dessa marca (na tela de Marcas) antes de agendar publicações.</div>
-        ) : null}
+        <div className="calendar-year-nav">
+          <Link href={`/app/conteudo/${brand.id}?year=${year - 1}`} className="btn-secondary" aria-label="Ano anterior">‹</Link>
+          <h2>{year}</h2>
+          <Link href={`/app/conteudo/${brand.id}?year=${year + 1}`} className="btn-secondary" aria-label="Próximo ano">›</Link>
+        </div>
 
-        <section className="editorial-generate-panel">
-          <h2>Nova linha editorial</h2>
-          <p>Descreva o briefing (tom, produtos, objetivo, período) e a IA gera as ideias de post — cada uma vira um rascunho pra você revisar antes de aprovar.</p>
-          <form action={generateEditorialLine} className="editorial-generate-form">
-            <input type="hidden" name="brand_id" value={brand.id} />
-            <label>Nome da linha*<input name="name" required maxLength={160} placeholder="Ex: Campanha de setembro" /></label>
-            <label>Quantidade de posts<input name="post_count" type="number" min={1} max={20} defaultValue={6} /></label>
-            <label className="full-field">
-              Briefing*
-              <textarea name="theme" required maxLength={4000} rows={4} placeholder="Ex: Loja de roupas femininas, tom descontraído e próximo, foco em promoções de fim de verão, sempre com CTA pro link da bio." />
-            </label>
-            <SubmitButton label="Gerar com IA" pendingLabel="Gerando pauta... (pode levar até 30s)" />
-          </form>
-        </section>
-
-        {lines.length === 0 ? (
-          <section className="empty-state">
-            <strong>Nenhuma linha editorial ainda</strong>
-            <p>Use o formulário acima pra gerar a primeira.</p>
-          </section>
-        ) : (
-          <div className="editorial-lines-list">
-            {lines.map((line) => {
-              const linePosts = postsByLine.get(line.id) ?? [];
-              const lineApproved = line.status === "approved";
-              return (
-                <article key={line.id} className="editorial-line-card">
-                  <div className="editorial-line-header">
-                    <div>
-                      <h3>{line.name}</h3>
-                      <span className={`line-status-badge ${line.status}`}>{LINE_STATUS_LABELS[line.status] ?? line.status}</span>
-                    </div>
-                    {line.status === "draft" ? (
-                      <div className="editorial-line-header-actions">
-                        <form action={approveEditorialLine}>
-                          <input type="hidden" name="line_id" value={line.id} />
-                          <input type="hidden" name="brand_id" value={brand.id} />
-                          <SubmitButton label="Aprovar linha" pendingLabel="Aprovando..." className="btn-primary" />
-                        </form>
-                        <form action={deleteEditorialLine}>
-                          <input type="hidden" name="line_id" value={line.id} />
-                          <input type="hidden" name="brand_id" value={brand.id} />
-                          <SubmitButton label="Excluir" pendingLabel="Excluindo..." className="btn-danger-text" />
-                        </form>
-                      </div>
-                    ) : null}
-                  </div>
-                  {line.theme ? <p className="editorial-line-theme">{line.theme}</p> : null}
-
-                  <div className="editorial-post-list">
-                    {linePosts.map((post) => (
-                      <div key={post.id} className="editorial-post-item">
-                        <div className="editorial-post-main">
-                          <p>{post.caption}</p>
-                          <span className={`post-status-badge ${post.status}`}>{POST_STATUS_LABELS[post.status] ?? post.status}</span>
-                        </div>
-
-                        {post.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={post.image_url} alt="" className="editorial-post-image" />
-                        ) : null}
-
-                        {lineApproved && post.status === "draft" ? (
-                          <div className="editorial-post-actions">
-                            {!post.image_url ? (
-                              <form action={generatePostImage}>
-                                <input type="hidden" name="post_id" value={post.id} />
-                                <input type="hidden" name="brand_id" value={brand.id} />
-                                <SubmitButton label="Gerar imagem" pendingLabel="Gerando imagem... (pode levar até 30s)" className="btn-secondary" />
-                              </form>
-                            ) : (
-                              <form action={approvePost}>
-                                <input type="hidden" name="post_id" value={post.id} />
-                                <input type="hidden" name="brand_id" value={brand.id} />
-                                <SubmitButton label="Aprovar post" pendingLabel="Aprovando..." className="btn-primary" />
-                              </form>
-                            )}
-                          </div>
-                        ) : null}
-
-                        {post.status === "approved" && connectedProviders.length > 0 ? (
-                          <form action={schedulePost} className="post-schedule-form">
-                            <input type="hidden" name="post_id" value={post.id} />
-                            <input type="hidden" name="brand_id" value={brand.id} />
-                            <label>
-                              Publicar em
-                              <input type="datetime-local" name="scheduled_at" required />
-                            </label>
-                            <div className="post-schedule-providers">
-                              {connectedProviders.map((provider) => (
-                                <label key={provider}>
-                                  <input type="checkbox" name="providers" value={provider} defaultChecked />
-                                  {PROVIDER_LABELS[provider] ?? provider}
-                                </label>
-                              ))}
-                            </div>
-                            <SubmitButton label="Agendar publicação" pendingLabel="Agendando..." className="btn-primary" />
-                          </form>
-                        ) : null}
-
-                        {post.status === "scheduled" && post.scheduled_at ? (
-                          <p className="editorial-post-schedule-info">
-                            Agendado pra {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(post.scheduled_at))}
-                            {" · "}
-                            {post.target_providers.map((provider) => PROVIDER_LABELS[provider] ?? provider).join(", ")}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
+        <div className="calendar-month-grid">
+          {MONTH_LABELS.map((label, index) => {
+            const monthNumber = index + 1;
+            const monthKey = `${year}-${String(monthNumber).padStart(2, "0")}`;
+            const lineCount = lineCountByMonth.get(monthKey) ?? 0;
+            const postCount = postCountByMonth.get(monthKey) ?? 0;
+            const isCurrentMonth = monthKey === `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+            return (
+              <Link
+                key={monthKey}
+                href={`/app/conteudo/${brand.id}/${year}/${String(monthNumber).padStart(2, "0")}`}
+                className={`calendar-month-card${isCurrentMonth ? " current" : ""}${lineCount > 0 ? " has-content" : ""}`}
+              >
+                <h3>{label}</h3>
+                {lineCount > 0 ? (
+                  <p>{lineCount} linha{lineCount === 1 ? "" : "s"} · {postCount} post{postCount === 1 ? "" : "s"}</p>
+                ) : (
+                  <p className="calendar-month-empty">Sem conteúdo</p>
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </>
   );

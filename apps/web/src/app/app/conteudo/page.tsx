@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandIdentityButton } from "@/components/BrandIdentityButton";
 import { NewBrandButton } from "@/components/NewBrandButton";
 import { SocialConnectButton } from "@/components/SocialConnectButton";
 import { getAuthContext } from "@/lib/auth-context";
@@ -9,11 +10,14 @@ type ConteudoPageProps = {
 
 const errorMessages: Record<string, string> = {
   invalid_brand: "Informe um nome de marca válido.",
-  forbidden: "Seu perfil não pode criar marcas.",
-  brand_create_failed: "Não foi possível criar a marca."
+  forbidden: "Seu perfil não pode fazer essa ação.",
+  brand_create_failed: "Não foi possível criar a marca.",
+  invalid_identity: "Revise o texto de identidade visual.",
+  identity_update_failed: "Não foi possível salvar a identidade visual."
 };
 const successMessages: Record<string, string> = {
-  brand_created: "Marca criada com sucesso."
+  brand_created: "Marca criada com sucesso.",
+  identity_updated: "Identidade visual salva."
 };
 
 const PROVIDER_LABELS: Record<string, string> = { instagram: "Instagram", facebook: "Facebook" };
@@ -22,12 +26,12 @@ export default async function ConteudoPage({ searchParams }: ConteudoPageProps) 
   const params = await searchParams;
   const { supabase, orgId } = await getAuthContext();
 
-  type BrandRow = { id: string; name: string; created_at: string };
+  type BrandRow = { id: string; name: string; visual_identity: string | null; created_at: string };
   type ConnectionRow = { id: string; brand_id: string; provider: "instagram" | "facebook"; external_account_name: string | null; status: string };
   type EditorialLineCountRow = { brand_id: string };
 
   const [{ data: brandRows }, { data: connectionRows }, { data: lineRows }] = await Promise.all([
-    supabase.from("brands").select("id, name, created_at").eq("org_id", orgId).order("created_at", { ascending: true }),
+    supabase.from("brands").select("id, name, visual_identity, created_at").eq("org_id", orgId).order("created_at", { ascending: true }),
     supabase.from("social_connections").select("id, brand_id, provider, external_account_name, status").eq("org_id", orgId),
     supabase.from("editorial_lines").select("brand_id").eq("org_id", orgId)
   ]);
@@ -71,7 +75,10 @@ export default async function ConteudoPage({ searchParams }: ConteudoPageProps) 
                 <article key={brand.id} className="brand-card">
                   <div className="brand-card-header">
                     <h2>{brand.name}</h2>
-                    <Link href={`/app/conteudo/${brand.id}`} className="btn-secondary">Linha editorial →</Link>
+                    <div className="brand-card-header-actions">
+                      <BrandIdentityButton brandId={brand.id} brandName={brand.name} initialValue={brand.visual_identity ?? ""} />
+                      <Link href={`/app/conteudo/${brand.id}`} className="btn-secondary">Linha editorial →</Link>
+                    </div>
                   </div>
 
                   <div className="brand-card-connections">
