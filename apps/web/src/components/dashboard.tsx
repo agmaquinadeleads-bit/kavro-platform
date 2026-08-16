@@ -6,6 +6,7 @@ import type {
   DashboardRevenuePoint
 } from "./dashboard-charts";
 import { DashboardChartsLoader } from "./dashboard-charts-loader";
+import { DashboardFilterBar } from "./DashboardFilterBar";
 
 // DashboardStage/DashboardLead continuam exportados daqui porque outros módulos
 // (MoveLeadForm, /app/pipeline/page.tsx) dependem desses tipos, mesmo que o
@@ -24,6 +25,8 @@ type DashboardProps = {
   canSeeTeamTasks: boolean;
   totalCount: number;
   feedback?: { kind: "error" | "success"; message: string };
+  dateFrom: string | null;
+  dateTo: string | null;
   openLeadsCount: number;
   wonLeadsCount: number;
   openRevenueInCents: number;
@@ -53,16 +56,21 @@ function stageKind(stage: DashboardFunnelStage): "green" | "red" | "blue" {
   return stage.isWon ? "green" : stage.isLost ? "red" : "blue";
 }
 
-export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCount, feedback, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData, funnelData }: DashboardProps) {
+export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCount, feedback, dateFrom, dateTo, openLeadsCount, wonLeadsCount, openRevenueInCents, leadsLast7Days, overdueFollowUpsCount, todayFollowUpsCount, evolutionData, originData, lossReasonData, revenueData, funnelData }: DashboardProps) {
   const closedTotal = openLeadsCount + wonLeadsCount;
   const conversionRate = closedTotal > 0 ? Math.round((wonLeadsCount / closedTotal) * 100) : 0;
   const averageTicketInCents = openLeadsCount > 0 ? Math.round(openRevenueInCents / openLeadsCount) : 0;
+  // Follow-ups vencidos/hoje e "últimos 7 dias" têm sentido fixo (agenda do
+  // momento, janela própria) — não seguem o filtro de período. Os demais
+  // indicadores refletem o intervalo escolhido, então o detalhe muda pra
+  // não parecer "pipeline inteiro" quando na verdade está filtrado.
+  const filterActive = Boolean(dateFrom && dateTo);
   const metrics = [
-    { label: "Total de leads", value: String(totalCount), detail: "no pipeline inteiro" },
-    { label: "Leads abertos", value: String(openLeadsCount), detail: "em andamento no funil" },
-    { label: "Fechados (ganhos)", value: String(wonLeadsCount), detail: "negócios ganhos" },
+    { label: "Total de leads", value: String(totalCount), detail: filterActive ? "no período selecionado" : "no pipeline inteiro" },
+    { label: "Leads abertos", value: String(openLeadsCount), detail: filterActive ? "em andamento, no período" : "em andamento no funil" },
+    { label: "Fechados (ganhos)", value: String(wonLeadsCount), detail: filterActive ? "negócios ganhos no período" : "negócios ganhos" },
     { label: "Taxa de conversão", value: `${conversionRate}%`, detail: "ganhos / (abertos + ganhos)" },
-    { label: "Receita no funil", value: currency(openRevenueInCents), detail: "valor em aberto" },
+    { label: "Receita no funil", value: currency(openRevenueInCents), detail: filterActive ? "valor em aberto, no período" : "valor em aberto" },
     { label: "Ticket médio", value: currency(averageTicketInCents), detail: "por lead em aberto" },
     { label: "Follow-ups vencidos", value: String(overdueFollowUpsCount), detail: "no pipeline inteiro" },
     { label: "Leads últimos 7 dias", value: String(leadsLast7Days), detail: "novos cadastros" }
@@ -81,6 +89,7 @@ export function Dashboard({ userName, tasks, taskScope, canSeeTeamTasks, totalCo
       <header className="topbar"><div><p>AMBIENTE DE HOMOLOGAÇÃO</p><h1>Olá, {userName}</h1></div><div className="top-actions"><a className="primary-link" href="/app/leads">+ Novo lead</a></div></header>
       <div className="content" id="dashboard">
           {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
+          <DashboardFilterBar currentFilters={{ dateFrom, dateTo }} />
           {(overdueFollowUpsCount > 0 || todayFollowUpsCount > 0) ? <section className="followup-alerts" aria-label="Alertas de follow-up">{overdueFollowUpsCount > 0 ? <div className="overdue"><strong>{overdueFollowUpsCount}</strong><span>follow-up{overdueFollowUpsCount === 1 ? "" : "s"} vencido{overdueFollowUpsCount === 1 ? "" : "s"}</span></div> : null}{todayFollowUpsCount > 0 ? <div className="today"><strong>{todayFollowUpsCount}</strong><span>follow-up{todayFollowUpsCount === 1 ? "" : "s"} para hoje</span></div> : null}</section> : null}
           <section className="metrics" aria-label="Indicadores comerciais">
             {metrics.map((metric) => <article className="metric" key={metric.label}><div><span>{metric.label}</span></div><strong>{metric.value}</strong><small><em>{metric.detail}</em></small></article>)}
