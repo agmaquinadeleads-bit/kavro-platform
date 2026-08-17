@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import type { KavroSession } from "../auth/session";
 import { EvolutionClient } from "./evolution.client";
 
@@ -15,6 +15,8 @@ type EvolutionStateResponse = { instance?: { state?: string } };
 // webhook, não o usuário.
 @Injectable()
 export class EvolutionConnectionService {
+  private readonly logger = new Logger(EvolutionConnectionService.name);
+
   constructor(private readonly evolution: EvolutionClient) {}
 
   private baseUrl() {
@@ -72,6 +74,10 @@ export class EvolutionConnectionService {
     if (!connection) throw new BadRequestException("Conexão não encontrada");
 
     const state = await this.evolution.connectionState(connection.instance_name) as EvolutionStateResponse;
+    // Log temporário — não dá pra testar contra uma instância real da
+    // Evolution neste ambiente, então isso ajuda a confirmar o formato
+    // exato da resposta se o mapeamento de estado precisar de ajuste.
+    this.logger.debug(`connectionState(${connection.instance_name}): ${JSON.stringify(state)}`);
     const status = this.mapState(state.instance?.state);
 
     if (status !== connection.status) {
@@ -93,7 +99,11 @@ export class EvolutionConnectionService {
     if (rawState === "open") return "connected";
     if (rawState === "connecting") return "connecting";
     if (rawState === "close") return "disconnected";
-    return "error";
+    // Formato não reconhecido (ex: shape da resposta diferente do
+    // esperado) — não declara falha sem ter certeza, isso derrubaria o QR
+    // à toa. Mantém como "conectando"; o log acima expõe a causa real se
+    // isso persistir.
+    return "connecting";
   }
 
   private async selectConnection(orgId: string, connectionId: string): Promise<ConnectionRow | null> {

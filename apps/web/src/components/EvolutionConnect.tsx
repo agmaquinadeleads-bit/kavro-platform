@@ -32,6 +32,7 @@ export function EvolutionConnect() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const connectionIdRef = useRef<string | null>(null);
   const pollTimeoutRef = useRef<number | null>(null);
+  const failureStreakRef = useRef(0);
 
   const clearPoll = useCallback(() => {
     if (pollTimeoutRef.current !== null) {
@@ -60,15 +61,24 @@ export function EvolutionConnect() {
       const body = await response.json() as StatusResponse;
 
       if (body.status === "connected") {
+        failureStreakRef.current = 0;
         setState("connected");
         setMessage("WhatsApp conectado com sucesso. Atualizando...");
         window.setTimeout(() => window.location.assign("/app/whatsapp/settings"), 900);
         return;
       }
       if (body.status === "error" || body.status === "disconnected") {
-        setState("error");
-        setMessage("A conexão caiu antes de terminar. Gere um novo QR Code e tente de novo.");
-        return;
+        failureStreakRef.current += 1;
+        // Só desiste depois de falhas seguidas — um único status ruim logo
+        // após gerar o QR pode ser só a Evolution ainda de inicializando a
+        // instância, não uma falha de verdade.
+        if (failureStreakRef.current >= 3) {
+          setState("error");
+          setMessage("A conexão caiu antes de terminar. Gere um novo QR Code e tente de novo.");
+          return;
+        }
+      } else {
+        failureStreakRef.current = 0;
       }
 
       pollTimeoutRef.current = window.setTimeout(() => void pollStatus(), 3000);
@@ -87,6 +97,7 @@ export function EvolutionConnect() {
     }
 
     clearPoll();
+    failureStreakRef.current = 0;
     setState("creating");
     setMessage("Gerando o QR Code...");
     setQrCode(null);
