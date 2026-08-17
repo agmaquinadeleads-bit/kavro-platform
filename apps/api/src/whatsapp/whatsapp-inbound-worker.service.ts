@@ -204,6 +204,7 @@ export class WhatsappInboundWorkerService {
     // (reprocessamento) — não é erro, só evita repetir o efeito colateral
     // de atualizar a conversa de novo.
     if (insertedMessage.conflict) return;
+    this.logger.debug(`Mensagem inbound gravada: conversation=${conversation.id} type=${normalized.messageType}`);
 
     await this.patch("whatsapp_conversations", `id=eq.${conversation.id}`, {
       last_message_preview: (normalized.textContent ?? `[${normalized.messageType}]`).slice(0, 500),

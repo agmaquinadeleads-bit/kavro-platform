@@ -109,6 +109,11 @@ export class EvolutionWebhookService {
     this.verifySecret(secret, providedSecret);
 
     const events = extractEvolutionMessages(payload);
+    // Log temporário — mostra o payload bruto (truncado) e quantas
+    // mensagens a extração reconheceu, pra confirmar se o formato bate
+    // com o esperado (extractEvolutionMessages é um chute sem instância
+    // real pra testar contra).
+    this.logger.debug(`capture(${instanceName}): extracted=${events.length} payload=${JSON.stringify(payload).slice(0, 1500)}`);
     for (const event of events) await this.persist(connection, event);
     return { accepted: true, events: events.length };
   }
