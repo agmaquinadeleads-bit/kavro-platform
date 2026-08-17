@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 
 type BaileysKey = { remoteJid?: string; fromMe?: boolean; id?: string };
 type BaileysMessage = {
@@ -83,6 +83,8 @@ export function extractEvolutionMessages(payload: EvolutionWebhookPayload): Extr
 
 @Injectable()
 export class EvolutionWebhookService {
+  private readonly logger = new Logger(EvolutionWebhookService.name);
+
   private serviceConfig() {
     const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -118,7 +120,10 @@ export class EvolutionWebhookService {
       `${baseUrl}/rest/v1/whatsapp_connections?select=id,org_id&instance_name=eq.${encodeURIComponent(instanceName)}&limit=1`,
       { headers, signal: AbortSignal.timeout(8000) }
     );
-    if (!response.ok) throw new ServiceUnavailableException("Falha ao identificar conexão");
+    if (!response.ok) {
+      this.logger.error(`resolveConnection(${instanceName}) falhou (${response.status}): ${await response.text()}`);
+      throw new ServiceUnavailableException("Falha ao identificar conexão");
+    }
     const rows = await response.json() as Array<{ id: string; org_id: string }>;
     const row = rows[0];
     return row ? { orgId: row.org_id, connectionId: row.id } : null;
@@ -132,7 +137,10 @@ export class EvolutionWebhookService {
       body: JSON.stringify({ p_connection_id: connectionId }),
       signal: AbortSignal.timeout(8000)
     });
-    if (!response.ok) throw new ServiceUnavailableException("Falha ao ler segredo do webhook");
+    if (!response.ok) {
+      this.logger.error(`getWebhookSecret(${connectionId}) falhou (${response.status}): ${await response.text()}`);
+      throw new ServiceUnavailableException("Falha ao ler segredo do webhook");
+    }
     return await response.json() as string;
   }
 
@@ -154,6 +162,9 @@ export class EvolutionWebhookService {
       signal: AbortSignal.timeout(8000)
     });
     if (insertResponse.status === 409) return;
-    if (!insertResponse.ok) throw new ServiceUnavailableException("Falha ao registrar evento da Evolution");
+    if (!insertResponse.ok) {
+      this.logger.error(`persist evento da Evolution falhou (${insertResponse.status}): ${await insertResponse.text()}`);
+      throw new ServiceUnavailableException("Falha ao registrar evento da Evolution");
+    }
   }
 }
