@@ -40,7 +40,9 @@ export class EvolutionConnectionService {
 
     const instanceName = `evo-${randomBytes(12).toString("hex")}`;
     const webhookSecret = randomBytes(32).toString("hex");
-    const webhookUrl = `${apiPublicUrl}/webhooks/evolution/whatsapp/${instanceName}`;
+    // Todas as rotas da API têm o prefixo global "v1" (ver main.ts,
+    // app.setGlobalPrefix("v1")) — inclusive esse webhook.
+    const webhookUrl = `${apiPublicUrl}/v1/webhooks/evolution/whatsapp/${instanceName}`;
 
     const stored = await fetch(`${this.baseUrl()}/rest/v1/rpc/complete_evolution_whatsapp_connection`, {
       method: "POST",
