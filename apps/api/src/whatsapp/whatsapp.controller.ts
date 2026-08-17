@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { CurrentSession } from "../auth/current-session.decorator";
 import { KavroAuthGuard } from "../auth/kavro-auth.guard";
 import type { KavroSession } from "../auth/session";
@@ -40,6 +40,16 @@ export class WhatsappController {
   @Get("evolution/connections/:id/status")
   getEvolutionConnectionStatus(@CurrentSession() session: KavroSession, @Param("id") id: string) {
     return this.evolutionConnection.getStatus(session, id);
+  }
+
+  @Post("evolution/connections/:id/qr")
+  regenerateEvolutionQr(@CurrentSession() session: KavroSession, @Param("id") id: string) {
+    return this.evolutionConnection.regenerateQr(session, id);
+  }
+
+  @Delete("connections/:id")
+  deleteConnection(@CurrentSession() session: KavroSession, @Param("id") id: string) {
+    return this.evolutionConnection.deleteConnection(session, id);
   }
 
   @Post("messages")

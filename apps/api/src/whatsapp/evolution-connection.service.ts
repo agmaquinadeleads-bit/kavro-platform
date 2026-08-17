@@ -97,6 +97,39 @@ export class EvolutionConnectionService {
     return { status };
   }
 
+  // Pede um QR Code novo pra uma instância que já existe (ex: o primeiro
+  // expirou antes de ser lido) — sem criar uma conexão nova do zero.
+  async regenerateQr(session: KavroSession, connectionId: string): Promise<{ qrCode: string | null }> {
+    if (session.role === "member") throw new BadRequestException("Somente administradores podem gerenciar conexões");
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
+
+    const connection = await this.selectConnection(session.organizationId, connectionId);
+    if (!connection) throw new BadRequestException("Conexão não encontrada");
+    if (connection.status === "connected") throw new BadRequestException("Essa conexão já está ativa");
+
+    const connectResponse = await this.evolution.connect(connection.instance_name) as EvolutionQrResponse;
+    const qrCode = connectResponse.base64 ?? connectResponse.code ?? null;
+    return { qrCode };
+  }
+
+  // Remove a conexão (qualquer provider — Evolution ou Meta Cloud API).
+  // whatsapp_provider_credentials/whatsapp_conversations/whatsapp_messages
+  // têm "on delete cascade" pra connection_id (0010_whatsapp_foundation.sql),
+  // então uma linha só já limpa tudo.
+  async deleteConnection(session: KavroSession, connectionId: string): Promise<void> {
+    if (session.role === "member") throw new BadRequestException("Somente administradores podem remover conexões");
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
+
+    const response = await fetch(
+      `${this.baseUrl()}/rest/v1/whatsapp_connections?id=eq.${encodeURIComponent(connectionId)}&org_id=eq.${encodeURIComponent(session.organizationId)}`,
+      { method: "DELETE", headers: this.serviceHeaders(), signal: AbortSignal.timeout(12000) }
+    );
+    if (!response.ok) {
+      this.logger.error(`deleteConnection(${connectionId}) falhou (${response.status}): ${await response.text()}`);
+      throw new ServiceUnavailableException("Falha ao remover a conexão");
+    }
+  }
+
   private mapState(rawState: string | undefined): "connecting" | "qr_code" | "connected" | "disconnected" | "error" {
     if (rawState === "open") return "connected";
     if (rawState === "connecting") return "connecting";
