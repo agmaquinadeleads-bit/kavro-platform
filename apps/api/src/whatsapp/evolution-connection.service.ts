@@ -111,7 +111,11 @@ export class EvolutionConnectionService {
       `${this.baseUrl()}/rest/v1/whatsapp_connections?id=eq.${encodeURIComponent(connectionId)}&org_id=eq.${encodeURIComponent(orgId)}&select=id,instance_name,status&limit=1`,
       { headers: this.serviceHeaders(), signal: AbortSignal.timeout(12000) }
     );
-    if (!response.ok) throw new ServiceUnavailableException("Falha ao consultar a conexão");
+    if (!response.ok) {
+      const body = await response.text();
+      this.logger.error(`Falha ao consultar whatsapp_connections (${response.status}): ${body}`);
+      throw new ServiceUnavailableException("Falha ao consultar a conexão");
+    }
     const rows = await response.json() as ConnectionRow[];
     return rows[0] ?? null;
   }
