@@ -31,5 +31,9 @@ export const getAuthContext = cache(async () => {
     .maybeSingle();
   if (!membership) redirect("/onboarding");
 
-  return { supabase, user, orgId: membership.org_id, role: membership.role };
+  // accessToken: usado por Server Actions que precisam chamar a API
+  // NestJS (apps/api) com bearer token, em vez de ir direto no Supabase —
+  // necessário quando a tabela não tem policy de insert/update pro client
+  // (ex: whatsapp_messages, escrita só via service role no backend).
+  return { supabase, user, orgId: membership.org_id, role: membership.role, accessToken: session.access_token };
 });

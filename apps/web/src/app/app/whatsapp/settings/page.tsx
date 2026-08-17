@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
+import { EvolutionConnect } from "@/components/EvolutionConnect";
 import { MetaEmbeddedSignup } from "@/components/meta-embedded-signup";
 
 type Props = { searchParams: Promise<{ method?: string }> };
@@ -22,7 +23,7 @@ export default async function WhatsappSettingsPage({ searchParams }: Props) {
     </div> : method === "official" ? <div className="connection-step"><span className="step-count">ETAPA 1 DE 3</span><h2>Conecte sua conta da Meta</h2><p>Uma janela segura da Meta será aberta. Entre na sua conta, escolha a empresa e selecione ou cadastre o número. Você não precisará enviar nenhuma chave ao Kavro.</p>
       <div className="step-preview"><span>1</span><div><strong>Entrar com a Meta</strong><small>Use uma conta administradora da empresa.</small></div></div><div className="step-preview"><span>2</span><div><strong>Escolher o WhatsApp</strong><small>Selecione a conta e o número desejado.</small></div></div><div className="step-preview"><span>3</span><div><strong>Confirmar conexão</strong><small>O Kavro verifica permissões, webhook e coexistência.</small></div></div>
       <MetaEmbeddedSignup /><Link href="/app/whatsapp/settings">← Escolher outra forma</Link>
-    </div> : <div className="connection-step"><span className="step-count">CONEXÃO ALTERNATIVA</span><h2>Conecte pelo QR Code</h2><p>O Kavro criará um QR Code para leitura no WhatsApp. Mantenha seu celular por perto.</p><div className="method-warning"><strong>Importante</strong><span>Esta modalidade pode ser interrompida pelo WhatsApp e não oferece todos os recursos oficiais de campanhas.</span></div><button disabled>Gerar QR Code</button><small className="availability-note">Será liberado após os testes isolados da Evolution.</small><Link href="/app/whatsapp/settings">← Escolher outra forma</Link></div>}
+    </div> : <div className="connection-step"><span className="step-count">CONEXÃO ALTERNATIVA</span><h2>Conecte pelo QR Code</h2><p>O Kavro criará um QR Code para leitura no WhatsApp. Mantenha seu celular por perto.</p><div className="method-warning"><strong>Importante</strong><span>Esta modalidade pode ser interrompida pelo WhatsApp e não oferece todos os recursos oficiais de campanhas.</span></div><EvolutionConnect /><Link href="/app/whatsapp/settings">← Escolher outra forma</Link></div>}
     <div className="security-note">Configurações feitas aqui afetam somente este ambiente e esta empresa.</div>
   </section></main>;
 }

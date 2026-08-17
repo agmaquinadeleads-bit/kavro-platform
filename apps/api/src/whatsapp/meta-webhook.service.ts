@@ -7,6 +7,7 @@ type MetaMessage = {
   timestamp?: string;
   type?: string;
   referral?: Record<string, unknown>;
+  text?: { body?: string };
 };
 
 type MetaChange = {
@@ -64,6 +65,8 @@ export function extractMetaMessages(payload: MetaWebhookPayload) {
             timestamp: boundedString(message.timestamp, 32),
             type: boundedString(message.type, 80) ?? "unknown",
             display_phone_number: boundedString(change.value?.metadata?.display_phone_number, 32),
+            // Só texto na v1 — mídia (imagem/áudio/documento) fica pra depois.
+            text: boundedString(message.text?.body, 20000),
             referral: sanitizeMetaReferral(message.referral)
           }
         });

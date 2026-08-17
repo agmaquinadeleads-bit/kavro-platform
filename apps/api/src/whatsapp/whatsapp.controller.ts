@@ -1,14 +1,21 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { CurrentSession } from "../auth/current-session.decorator";
 import { KavroAuthGuard } from "../auth/kavro-auth.guard";
 import type { KavroSession } from "../auth/session";
 import { EvolutionClient } from "./evolution.client";
+import { EvolutionConnectionService } from "./evolution-connection.service";
 import { MetaOnboardingService } from "./meta-onboarding.service";
+import { WhatsappSendService } from "./whatsapp-send.service";
 
 @Controller("whatsapp")
 @UseGuards(KavroAuthGuard)
 export class WhatsappController {
-  constructor(private readonly evolution: EvolutionClient, private readonly metaOnboarding: MetaOnboardingService) {}
+  constructor(
+    private readonly evolution: EvolutionClient,
+    private readonly metaOnboarding: MetaOnboardingService,
+    private readonly evolutionConnection: EvolutionConnectionService,
+    private readonly whatsappSend: WhatsappSendService
+  ) {}
 
   @Get("readiness")
   readiness(@CurrentSession() session: KavroSession) {
@@ -23,5 +30,24 @@ export class WhatsappController {
   @Post("meta/onboarding")
   completeMetaOnboarding(@CurrentSession() session: KavroSession, @Body() body: { code: string; phoneNumberId: string; businessAccountId: string }) {
     return this.metaOnboarding.complete(session, body);
+  }
+
+  @Post("evolution/connections")
+  createEvolutionConnection(@CurrentSession() session: KavroSession, @Body() body: { displayName?: string }) {
+    return this.evolutionConnection.createConnection(session, body.displayName ?? "");
+  }
+
+  @Get("evolution/connections/:id/status")
+  getEvolutionConnectionStatus(@CurrentSession() session: KavroSession, @Param("id") id: string) {
+    return this.evolutionConnection.getStatus(session, id);
+  }
+
+  @Post("messages")
+  sendMessage(@CurrentSession() session: KavroSession, @Body() body: { connectionId?: string; conversationId?: string; text?: string }) {
+    return this.whatsappSend.send(session, {
+      connectionId: body.connectionId ?? "",
+      conversationId: body.conversationId ?? "",
+      text: body.text ?? ""
+    });
   }
 }
