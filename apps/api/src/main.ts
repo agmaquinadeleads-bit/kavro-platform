@@ -15,7 +15,7 @@ async function bootstrap() {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  app.enableCors({ origin: allowedOrigins, methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["authorization", "content-type"] });
+  app.enableCors({ origin: allowedOrigins, methods: ["GET", "POST", "DELETE", "OPTIONS"], allowedHeaders: ["authorization", "content-type"] });
   app.setGlobalPrefix("v1");
   await app.listen(Number(process.env.PORT ?? 3001), "0.0.0.0");
 }
