@@ -6,13 +6,13 @@ type SendMessageInput = {
   connectionId: string;
   conversationId: string;
   text: string;
-  media?: { objectKey: string; mimeType: string; messageType: "image" | "audio" };
+  media?: { objectKey: string; mimeType: string; messageType: "image" | "audio" | "document"; fileName?: string };
 };
 type ConversationRow = { id: string };
 type MessageRow = { id: string };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MEDIA_PREVIEW_LABELS: Record<string, string> = { image: "📷 Imagem", audio: "🎤 Áudio" };
+const MEDIA_PREVIEW_LABELS: Record<string, string> = { image: "📷 Imagem", audio: "🎤 Áudio", document: "📄 Documento" };
 
 // Só cria a mensagem pendente + o item da fila — o envio de verdade
 // (chamar a Evolution ou a Graph API) acontece em
@@ -54,6 +54,7 @@ export class WhatsappSendService {
       text_content: trimmedText || null,
       media_object_key: input.media?.objectKey ?? null,
       media_mime_type: input.media?.mimeType ?? null,
+      media_file_name: input.media?.fileName ?? null,
       // Sem isso fica null até o worker confirmar o envio (ou pra sempre,
       // já que sendItem() nunca grava provider_timestamp) — quebra a
       // ordenação cronológica da conversa, que depende dessa coluna.

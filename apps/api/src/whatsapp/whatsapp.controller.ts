@@ -60,14 +60,14 @@ export class WhatsappController {
   @Post("messages")
   sendMessage(
     @CurrentSession() session: KavroSession,
-    @Body() body: { connectionId?: string; conversationId?: string; text?: string; mediaObjectKey?: string; mediaMimeType?: string; mediaMessageType?: "image" | "audio" }
+    @Body() body: { connectionId?: string; conversationId?: string; text?: string; mediaObjectKey?: string; mediaMimeType?: string; mediaMessageType?: "image" | "audio" | "document"; mediaFileName?: string }
   ) {
     return this.whatsappSend.send(session, {
       connectionId: body.connectionId ?? "",
       conversationId: body.conversationId ?? "",
       text: body.text ?? "",
       media: body.mediaObjectKey && body.mediaMimeType && body.mediaMessageType
-        ? { objectKey: body.mediaObjectKey, mimeType: body.mediaMimeType, messageType: body.mediaMessageType }
+        ? { objectKey: body.mediaObjectKey, mimeType: body.mediaMimeType, messageType: body.mediaMessageType, fileName: body.mediaFileName }
         : undefined
     });
   }

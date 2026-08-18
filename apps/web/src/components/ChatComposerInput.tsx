@@ -6,13 +6,15 @@ import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } fro
 // atualizar o lockfile) — um punhado de emojis comuns cobre o pedido de
 // deixar a conversa com o lead menos formal.
 const EMOJIS = ["😀", "😄", "😊", "🙂", "😉", "😂", "🥰", "😍", "🤔", "😅", "😢", "😡", "👍", "👏", "🙏", "🙌", "💪", "❤️", "🔥", "🎉", "✅", "⏰", "📅", "💬", "📞", "🚀", "✨", "😴"];
-const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+const ATTACH_ACCEPT = "image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 
 // Textarea de mensagem não envia com Enter por padrão (é multi-linha) —
 // aqui replica o comportamento do WhatsApp Web: Enter envia, Shift+Enter
 // quebra linha. O picker de emoji insere no cursor sem depender de um
 // input controlado (a textarea permanece não-controlada). O anexo
-// (imagem/áudio) vai no mesmo <form>, o texto vira legenda opcional.
+// (imagem/áudio/documento — útil pra mandar proposta em PDF) vai no
+// mesmo <form>, o texto vira legenda opcional.
 export function ChatComposerInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +51,7 @@ export function ChatComposerInput() {
       return;
     }
     if (file.size > MAX_MEDIA_BYTES) {
-      setFileError("Arquivo maior que 10MB — escolha um menor.");
+      setFileError("Arquivo maior que 15MB — escolha um menor.");
       event.target.value = "";
       setFileName(null);
       return;
@@ -86,14 +88,14 @@ export function ChatComposerInput() {
           </div>
         ) : null}
       </div>
-      <button type="button" className="attach-toggle" aria-label="Anexar áudio ou imagem" onClick={() => fileInputRef.current?.click()}>
+      <button type="button" className="attach-toggle" aria-label="Anexar áudio, imagem ou documento" onClick={() => fileInputRef.current?.click()}>
         📎
       </button>
       <input
         ref={fileInputRef}
         type="file"
         name="media"
-        accept="image/*,audio/*"
+        accept={ATTACH_ACCEPT}
         className="attach-input"
         onChange={handleFileChange}
       />

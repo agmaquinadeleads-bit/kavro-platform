@@ -7,10 +7,9 @@ import { sendWhatsappMessage } from "./actions";
 type WhatsappPageProps = { searchParams: Promise<{ conversation?: string; connection?: string; error?: string; success?: string }> };
 
 const errorMessages: Record<string, string> = {
-  invalid_message: "Escreva algo ou anexe um áudio/imagem antes de enviar.",
+  invalid_message: "Escreva algo ou anexe um arquivo antes de enviar.",
   send_failed: "Não foi possível enviar a mensagem. Tente novamente.",
-  invalid_media: "Só é possível anexar áudio ou imagem.",
-  media_too_large: "Arquivo maior que 10MB — escolha um menor.",
+  media_too_large: "Arquivo maior que 15MB — escolha um menor.",
   media_upload_failed: "Não foi possível enviar o anexo. Tente novamente."
 };
 const successMessages: Record<string, string> = {
@@ -30,9 +29,20 @@ const MEDIA_LABELS: Record<string, string> = {
   reaction: "Reação"
 };
 
-// Sem media_object_key (mensagem antiga, de antes da captura de mídia, ou
-// upload que falhou) cai no rótulo de texto — ainda dá pra saber que tipo
-// de conteúdo era, só sem o player.
+const MEDIA_ICONS: Record<string, string> = {
+  image: "🖼️",
+  video: "🎬",
+  audio: "🎤",
+  document: "📄",
+  sticker: "🖼️"
+};
+
+// Sem media_object_key (mensagem de antes da captura de mídia — conexão
+// precisa ser recriada pra habilitar — ou upload que falhou) cai num
+// rótulo diferenciado, com ícone e estilo apagado — sem isso ficava
+// visualmente idêntico a uma mensagem de texto de verdade digitada com
+// esse mesmo nome (ex: alguém digitar "Figura" x a legenda automática
+// "Figurinha").
 function MessageBody({ messageType, textContent, mediaUrl }: { messageType: string; textContent: string | null; mediaUrl: string | undefined }) {
   if (messageType === "audio" && mediaUrl) {
     return <audio controls preload="none" src={mediaUrl} className="message-audio" />;
@@ -55,9 +65,20 @@ function MessageBody({ messageType, textContent, mediaUrl }: { messageType: stri
     );
   }
   if (messageType === "document" && mediaUrl) {
-    return <a href={mediaUrl} target="_blank" rel="noreferrer" className="message-document">📎 {textContent || "Baixar arquivo"}</a>;
+    return <a href={mediaUrl} target="_blank" rel="noreferrer" className="message-document">📄 {textContent || "Baixar arquivo"}</a>;
   }
-  return <p>{textContent || MEDIA_LABELS[messageType] || "Conteúdo não suportado ainda"}</p>;
+  if (MEDIA_ICONS[messageType]) {
+    return (
+      <p className="message-unavailable">
+        {MEDIA_ICONS[messageType]} {MEDIA_LABELS[messageType]}
+        <small>Mídia indisponível — reconecte o número em Configurações para habilitar.</small>
+      </p>
+    );
+  }
+  if (messageType !== "text") {
+    return <p className="message-unavailable">Tipo de mensagem não suportado</p>;
+  }
+  return <p>{textContent}</p>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -123,7 +144,7 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
     {!connections?.length ? <section className="inbox-empty"><div className="whatsapp-mark">◉</div><p className="eyebrow">CAIXA COMPARTILHADA</p><h2>Conecte o primeiro número</h2><p>As conversas aparecerão aqui depois que um administrador conectar o WhatsApp com segurança pelo backend do Kavro.</p>{role !== "member" ? <Link href="/app/whatsapp/settings">Preparar conexão</Link> : <span>Solicite a conexão ao administrador da empresa.</span>}</section> : <section className="inbox-layout">
       <aside className="conversation-panel"><div className="conversation-search"><input type="search" placeholder="Buscar conversa" aria-label="Buscar conversa" disabled /></div>{conversations.length ? <nav aria-label="Conversas do WhatsApp">{conversations.map((conversation) => <Link className={conversation.id === selectedConversation?.id ? "active" : ""} href={`/app/whatsapp?connection=${selectedConnectionId}&conversation=${conversation.id}`} key={conversation.id}><span>{(conversation.contact_name || conversation.remote_jid)[0]?.toUpperCase()}</span><div><strong>{conversation.contact_name || conversation.remote_jid}</strong><small>{conversation.last_message_preview || "Sem mensagens"}</small></div>{conversation.last_message_at ? <time>{messageTime(conversation.last_message_at)}</time> : null}{conversation.unread_count > 0 ? <b>{conversation.unread_count}</b> : null}</Link>)}</nav> : <div className="conversation-empty">Nenhuma conversa recebida neste número.</div>}</aside>
-      <section className="chat-panel">{selectedConversation ? <><header><div className="chat-avatar">{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div></header><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}>{message.direction === "outbound" && selectedConnection?.display_name ? <span className="sender-name">{selectedConnection.display_name}</span> : null}<small>{message.message_type !== "text" ? message.message_type.toUpperCase() : null}</small><MessageBody messageType={message.message_type} textContent={message.text_content} mediaUrl={message.media_object_key ? mediaUrls[message.media_object_key] : undefined} /><time>{messageTime(message.provider_timestamp || message.created_at)} · {statusLabel(message.status)}</time></article>) : <div className="chat-empty">A conversa ainda não possui mensagens.</div>}</div><form action={sendWhatsappMessage} className="chat-composer"><input type="hidden" name="connection_id" value={selectedConnectionId} /><input type="hidden" name="conversation_id" value={selectedConversation.id} /><ChatComposerInput /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></form></> : <div className="chat-empty">Selecione uma conversa para começar.</div>}</section>
+      <section className="chat-panel">{selectedConversation ? <><header><div className="chat-avatar">{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div></header><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}>{message.direction === "outbound" && selectedConnection?.display_name ? <span className="sender-name">{selectedConnection.display_name}</span> : null}<MessageBody messageType={message.message_type} textContent={message.text_content} mediaUrl={message.media_object_key ? mediaUrls[message.media_object_key] : undefined} /><time>{messageTime(message.provider_timestamp || message.created_at)} · {statusLabel(message.status)}</time></article>) : <div className="chat-empty">A conversa ainda não possui mensagens.</div>}</div><form action={sendWhatsappMessage} className="chat-composer"><input type="hidden" name="connection_id" value={selectedConnectionId} /><input type="hidden" name="conversation_id" value={selectedConversation.id} /><ChatComposerInput /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></form></> : <div className="chat-empty">Selecione uma conversa para começar.</div>}</section>
     </section>}
   </main>;
 }

@@ -237,7 +237,9 @@ button { cursor:pointer; }
 .message-image { display:block; max-width:100%; max-height:320px; border-radius:8px; object-fit:cover; }
 .message-video { display:block; max-width:100%; max-height:320px; border-radius:8px; }
 .message-document { display:inline-flex; align-items:center; gap:6px; color:#126a43; font-size:11px; font-weight:700; text-decoration:none; }
-.message-document:hover { text-decoration:underline; }.message-bubble > small { color:#698077; font-size:8px; }.message-bubble time { display:block; margin-top:5px; color:#84938b; text-align:right; font-size:8px; }.chat-composer { padding:12px 16px; display:grid; grid-template-columns:1fr auto; gap:8px; border-top:1px solid #dae3dd; background:white; }.chat-composer textarea { min-height:43px; max-height:100px; resize:vertical; border:1px solid #dce4df; border-radius:9px; padding:11px; }.chat-composer button { min-width:75px; border:0; border-radius:9px; background:#168a55; color:white; font-weight:750; }.chat-composer small { grid-column:1/-1; color:#939e98; font-size:8px; }
+.message-document:hover { text-decoration:underline; }
+.message-unavailable { display:flex; flex-direction:column; gap:2px; color:#8b978f; font-style:italic; }
+.message-unavailable small { color:#a4ada6; font-style:normal; font-size:8px; line-height:1.4; }.message-bubble > small { color:#698077; font-size:8px; }.message-bubble time { display:block; margin-top:5px; color:#84938b; text-align:right; font-size:8px; }.chat-composer { padding:12px 16px; display:grid; grid-template-columns:1fr auto; gap:8px; border-top:1px solid #dae3dd; background:white; }.chat-composer textarea { min-height:43px; max-height:100px; resize:vertical; border:1px solid #dce4df; border-radius:9px; padding:11px; }.chat-composer button { min-width:75px; border:0; border-radius:9px; background:#168a55; color:white; font-weight:750; }.chat-composer small { grid-column:1/-1; color:#939e98; font-size:8px; }
 .chat-composer-input { min-width:0; display:flex; align-items:flex-end; gap:6px; }
 .chat-composer-text { flex:1; min-width:0; display:grid; gap:4px; }
 .chat-composer-text textarea { width:100%; }

@@ -12,7 +12,7 @@ const sendMessageSchema = z.object({
   text: z.string().trim().max(20000)
 });
 
-const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const MEDIA_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -22,8 +22,16 @@ const MEDIA_EXTENSIONS: Record<string, string> = {
   "audio/ogg": "ogg",
   "audio/mp4": "m4a",
   "audio/wav": "wav",
-  "audio/webm": "weba"
+  "audio/webm": "weba",
+  "application/pdf": "pdf"
 };
+
+function extensionFor(file: File): string {
+  if (MEDIA_EXTENSIONS[file.type]) return MEDIA_EXTENSIONS[file.type];
+  const fromName = file.name.split(".").pop();
+  if (fromName && fromName.length <= 10 && fromName !== file.name) return fromName.toLowerCase();
+  return "bin";
+}
 
 // whatsapp_messages não tem policy de insert pro client (só service_role
 // escreve lá — ver 0010_whatsapp_foundation.sql) — diferente de toda outra
@@ -51,18 +59,18 @@ export async function sendWhatsappMessage(formData: FormData) {
 
   const { supabase, orgId, accessToken } = await getAuthContext();
 
-  let media: { objectKey: string; mimeType: string; messageType: "image" | "audio" } | undefined;
+  let media: { objectKey: string; mimeType: string; messageType: "image" | "audio" | "document"; fileName?: string } | undefined;
   if (hasMedia) {
     const file = mediaFile as File;
     if (file.size > MAX_MEDIA_BYTES) redirect(`${backPath}&error=media_too_large`);
-    const messageType = file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : null;
-    if (!messageType) redirect(`${backPath}&error=invalid_media`);
+    // Qualquer coisa que não seja imagem/áudio vira documento — cobre PDF
+    // de proposta, planilha, Word etc., que o WhatsApp aceita de boa.
+    const messageType = file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "document";
 
-    const extension = MEDIA_EXTENSIONS[file.type] ?? (messageType === "image" ? "jpg" : "ogg");
-    const objectKey = `${orgId}/${input.data.connectionId}/${randomUUID()}.${extension}`;
-    const { error: uploadError } = await supabase.storage.from("whatsapp-media").upload(objectKey, file, { contentType: file.type });
+    const objectKey = `${orgId}/${input.data.connectionId}/${randomUUID()}.${extensionFor(file)}`;
+    const { error: uploadError } = await supabase.storage.from("whatsapp-media").upload(objectKey, file, { contentType: file.type || "application/octet-stream" });
     if (uploadError) redirect(`${backPath}&error=media_upload_failed`);
-    media = { objectKey, mimeType: file.type, messageType };
+    media = { objectKey, mimeType: file.type || "application/octet-stream", messageType, fileName: messageType === "document" ? file.name : undefined };
   }
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -77,7 +85,8 @@ export async function sendWhatsappMessage(formData: FormData) {
       text: input.data.text,
       mediaObjectKey: media?.objectKey,
       mediaMimeType: media?.mimeType,
-      mediaMessageType: media?.messageType
+      mediaMessageType: media?.messageType,
+      mediaFileName: media?.fileName
     })
   });
   if (!response.ok) redirect(`${backPath}&error=send_failed`);

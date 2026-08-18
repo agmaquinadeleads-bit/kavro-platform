@@ -58,10 +58,11 @@ export class MetaWhatsappClient {
     return body.id;
   }
 
-  async sendMedia(phoneNumberId: string, accessToken: string, to: string, mediaId: string, type: "image" | "audio", caption: string | undefined): Promise<string> {
+  async sendMedia(phoneNumberId: string, accessToken: string, to: string, mediaId: string, type: "image" | "audio" | "document", caption: string | undefined, fileName: string | undefined): Promise<string> {
     const mediaPayload: Record<string, unknown> = { id: mediaId };
-    // Áudio não aceita legenda na Cloud API — só imagem.
-    if (type === "image" && caption) mediaPayload.caption = caption;
+    // Áudio não aceita legenda na Cloud API — imagem e documento aceitam.
+    if (type !== "audio" && caption) mediaPayload.caption = caption;
+    if (type === "document" && fileName) mediaPayload.filename = fileName;
     const body = await this.request<SendMessageResponse>(`/${encodeURIComponent(phoneNumberId)}/messages`, accessToken, {
       method: "POST",
       body: JSON.stringify({ messaging_product: "whatsapp", to, type, [type]: mediaPayload })

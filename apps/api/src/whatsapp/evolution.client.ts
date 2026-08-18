@@ -54,4 +54,12 @@ export class EvolutionClient {
       body: JSON.stringify({ number, audio: base64 })
     });
   }
+
+  // Documento (PDF, planilha etc.) — envio de proposta pro cliente.
+  sendDocument(instanceName: string, number: string, base64: string, mimetype: string, fileName: string, caption: string | undefined) {
+    return this.request<Record<string, unknown>>(`/message/sendMedia/${this.instancePath(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, mediatype: "document", mimetype, media: base64, fileName, caption: caption || undefined })
+    });
+  }
 }
