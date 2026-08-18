@@ -38,9 +38,9 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   let taskQuery = supabase.from("lead_tasks").select("id, lead_id, title, due_at, completed_at, assigned_to, version, leads!inner(name, deleted_at)").eq("org_id", orgId).is("completed_at", null).is("leads.deleted_at", null).order("due_at", { ascending: true, nullsFirst: false }).limit(12);
   if (!canSeeTeamTasks || params.tasks !== "all") taskQuery = taskQuery.eq("assigned_to", user.id);
 
-  type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean };
+  type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean; requires_proposal: boolean };
   const stagesPromise: Promise<{ data: StageRow[] | null }> = pipeline
-    ? Promise.resolve(supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true }))
+    ? Promise.resolve(supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost, requires_proposal").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true }))
     : Promise.resolve({ data: null });
 
   // Tasks are independent of the pipeline/stage/lead lookups below, so run them
@@ -48,7 +48,7 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const [{ data: stageRows }, { data: taskRows }] = await Promise.all([stagesPromise, taskQuery]);
 
   if (pipeline) {
-    stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost }));
+    stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost, requiresProposal: stage.requires_proposal }));
 
     // KPI queries below are org+pipeline scoped counts/aggregates — the dashboard
     // no longer renders a paginated lead list (moved to /app/leads e /app/pipeline),
