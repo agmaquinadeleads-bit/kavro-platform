@@ -42,7 +42,11 @@ export class MetaWhatsappClient {
   async uploadMedia(phoneNumberId: string, accessToken: string, bytes: Buffer, mimeType: string): Promise<string> {
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
-    form.append("file", new Blob([bytes], { type: mimeType }), "media");
+    // new Blob([bytes]) direto não compila: o tipo ArrayBufferLike de
+    // Buffer não bate com BlobPart (espera ArrayBuffer, não
+    // SharedArrayBuffer) — new Uint8Array(bytes) copia pra um buffer
+    // "puro" que satisfaz o tipo.
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: mimeType }), "media");
     const response = await fetch(`https://graph.facebook.com/${this.graphVersion()}/${encodeURIComponent(phoneNumberId)}/media`, {
       method: "POST",
       headers: { authorization: `Bearer ${accessToken}` },
