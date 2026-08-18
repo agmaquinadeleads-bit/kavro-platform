@@ -46,6 +46,10 @@ export class WhatsappSendService {
       message_type: "text",
       status: "pending",
       text_content: trimmedText,
+      // Sem isso fica null até o worker confirmar o envio (ou pra sempre,
+      // já que sendItem() nunca grava provider_timestamp) — quebra a
+      // ordenação cronológica da conversa, que depende dessa coluna.
+      provider_timestamp: new Date().toISOString(),
       client_idempotency_key: randomUUID(),
       created_by: session.userId
     });

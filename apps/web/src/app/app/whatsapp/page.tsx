@@ -52,7 +52,11 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     // Ordem decrescente (mais recente primeiro) — combina com
     // flex-direction: column-reverse no .message-stream (globals.css), que
     // já inicia a rolagem na mensagem mais recente sem precisar de JS.
-    const response = await supabase.from("whatsapp_messages").select("id, direction, message_type, text_content, status, provider_timestamp, created_at").eq("org_id", orgId).eq("conversation_id", selectedConversation.id).order("provider_timestamp", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(200);
+    // Ordena só por created_at (nunca nulo): mensagens enviadas pelo Kavro
+    // antes da correção do envio ficaram com provider_timestamp nulo, e
+    // ordenar por uma coluna nullable com nulls-last jogava essas
+    // mensagens pro fim errado da lista.
+    const response = await supabase.from("whatsapp_messages").select("id, direction, message_type, text_content, status, provider_timestamp, created_at").eq("org_id", orgId).eq("conversation_id", selectedConversation.id).order("created_at", { ascending: false }).limit(200);
     messages = response.data ?? [];
   }
 
