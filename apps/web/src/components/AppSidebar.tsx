@@ -8,14 +8,14 @@ import { logout } from "@/app/login/actions";
 type AppSidebarProps = {
   userName: string;
   organizationName: string;
-  canSeeTeamTasks: boolean;
+  canManage: boolean;
 };
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "US";
 }
 
-export function AppSidebar({ userName, organizationName, canSeeTeamTasks }: AppSidebarProps) {
+export function AppSidebar({ userName, organizationName, canManage }: AppSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -73,9 +73,10 @@ export function AppSidebar({ userName, organizationName, canSeeTeamTasks }: AppS
           <Link className={isActive("/app/leads") ? "active" : ""} href="/app/leads" onClick={closeMobileMenu}>☰ <span>Leads</span></Link>
           <Link className={isActive("/app/whatsapp") ? "active" : ""} href="/app/whatsapp" onClick={closeMobileMenu}>◌ <span>Conversas</span></Link>
           <Link className={pathname.startsWith("/app/conteudo") ? "active" : ""} href="/app/conteudo" onClick={closeMobileMenu}>✎ <span>Conteúdo</span></Link>
+          {canManage ? <Link className={pathname.startsWith("/app/criativos") ? "active" : ""} href="/app/criativos" onClick={closeMobileMenu}>◈ <span>Criativos</span></Link> : null}
         </nav>
         <div className="sidebar-footer">
-          {canSeeTeamTasks ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team" onClick={closeMobileMenu}>♙ <span>Equipe</span></Link> : null}
+          {canManage ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team" onClick={closeMobileMenu}>♙ <span>Equipe</span></Link> : null}
           <div className="profile"><span>{initials(userName)}</span>{!collapsed ? <div><strong>{userName}</strong><small>{organizationName}</small></div> : null}</div>
           <form action={logout}><button className="logout-button" type="submit">{collapsed ? "⏻" : "Sair da conta"}</button></form>
         </div>

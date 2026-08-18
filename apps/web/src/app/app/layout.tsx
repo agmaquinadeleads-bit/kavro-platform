@@ -12,11 +12,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const metadataName = user.user_metadata?.full_name;
   const userName = typeof metadataName === "string" && metadataName.trim() ? metadataName.trim() : user.email?.split("@")[0] ?? "Usuário";
-  const canSeeTeamTasks = role === "owner" || role === "admin";
+  // Também controla a visibilidade do link de Criativos — mesma regra de
+  // quem pode gerenciar configuração da organização.
+  const canManage = role === "owner" || role === "admin";
 
   return (
     <div className="app-shell">
-      <AppSidebar userName={userName} organizationName={organization?.name ?? "Organização"} canSeeTeamTasks={canSeeTeamTasks} />
+      <AppSidebar userName={userName} organizationName={organization?.name ?? "Organização"} canManage={canManage} />
       <section className="workspace">{children}</section>
     </div>
   );

@@ -234,7 +234,11 @@ export class WhatsappInboundWorkerService {
           p_conversation_id: conversation.id,
           p_created_by: connection.created_by,
           p_name: normalized.contactName || normalized.remoteJid.split("@")[0] || "Contato do WhatsApp",
-          p_phone: normalized.remoteJid.split("@")[0] ?? normalized.remoteJid
+          p_phone: normalized.remoteJid.split("@")[0] ?? normalized.remoteJid,
+          // Se bater com a mensagem inicial de um criativo cadastrado
+          // (packages/database/migrations/0035_ad_creatives.sql), o lead
+          // já nasce com esse criativo como origem.
+          p_message_text: normalized.textContent
         });
       } catch (error) {
         this.logger.error(`Falha ao criar lead automático (conversation=${conversation.id}): ${(error as Error).message}`);
