@@ -7,6 +7,7 @@ type ConnectionActionsProps = {
   connectionId: string;
   provider: string;
   status: string;
+  displayName: string;
 };
 
 type QrResponse = { qrCode: string | null };
@@ -37,10 +38,35 @@ async function authHeader() {
 // Ações de gerenciamento por conexão (excluir / gerar QR novo) — v1 do
 // fluxo de conexão só criava, não dava pra limpar tentativas que
 // ficaram presas em "Aguardando QR".
-export function ConnectionActions({ connectionId, provider, status }: ConnectionActionsProps) {
+export function ConnectionActions({ connectionId, provider, status, displayName }: ConnectionActionsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [nameInput, setNameInput] = useState(displayName);
+
+  const handleRename = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      setError("Informe um nome pra essa conexão.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const { apiUrl, headers } = await authHeader();
+      const response = await fetch(`${apiUrl}/v1/whatsapp/connections/${connectionId}`, {
+        method: "PATCH",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ displayName: trimmed })
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      window.location.reload();
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : "Não foi possível renomear a conexão.");
+    }
+  };
 
   const handleDelete = async () => {
     if (!window.confirm("Remover essa conexão? As conversas ligadas a ela também serão apagadas.")) return;
@@ -80,9 +106,38 @@ export function ConnectionActions({ connectionId, provider, status }: Connection
 
   const canRegenerateQr = provider === "evolution" && status !== "connected";
 
+  if (editing) {
+    return (
+      <div className="connection-actions">
+        <div className="connection-actions-rename">
+          <input
+            type="text"
+            value={nameInput}
+            onChange={(event) => setNameInput(event.target.value)}
+            maxLength={100}
+            aria-label="Nome da conexão"
+            disabled={busy}
+          />
+          <div className="connection-actions-buttons">
+            <button type="button" className="link-button" onClick={() => void handleRename()} disabled={busy}>
+              Salvar
+            </button>
+            <button type="button" className="link-button" onClick={() => { setEditing(false); setNameInput(displayName); setError(""); }} disabled={busy}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+        {error ? <small className="availability-note error">{error}</small> : null}
+      </div>
+    );
+  }
+
   return (
     <div className="connection-actions">
       <div className="connection-actions-buttons">
+        <button type="button" className="link-button" onClick={() => setEditing(true)} disabled={busy}>
+          Editar nome
+        </button>
         {canRegenerateQr ? (
           <button type="button" className="link-button" onClick={() => void handleRegenerateQr()} disabled={busy}>
             Ler QR novamente

@@ -130,6 +130,25 @@ export class EvolutionConnectionService {
     }
   }
 
+  // Só o nome — qualquer provider (Evolution ou Meta Cloud API), sem
+  // depender de nenhuma chamada externa.
+  async renameConnection(session: KavroSession, connectionId: string, displayName: string): Promise<void> {
+    if (session.role === "member") throw new BadRequestException("Somente administradores podem renomear conexões");
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
+
+    const trimmedName = displayName.trim();
+    if (!trimmedName || trimmedName.length > 100) throw new BadRequestException("Informe um nome entre 1 e 100 caracteres");
+
+    const response = await fetch(
+      `${this.baseUrl()}/rest/v1/whatsapp_connections?id=eq.${encodeURIComponent(connectionId)}&org_id=eq.${encodeURIComponent(session.organizationId)}`,
+      { method: "PATCH", headers: this.serviceHeaders(), body: JSON.stringify({ display_name: trimmedName }), signal: AbortSignal.timeout(12000) }
+    );
+    if (!response.ok) {
+      this.logger.error(`renameConnection(${connectionId}) falhou (${response.status}): ${await response.text()}`);
+      throw new ServiceUnavailableException("Falha ao renomear a conexão");
+    }
+  }
+
   private mapState(rawState: string | undefined): "connecting" | "qr_code" | "connected" | "disconnected" | "error" {
     if (rawState === "open") return "connected";
     if (rawState === "connecting") return "connecting";
