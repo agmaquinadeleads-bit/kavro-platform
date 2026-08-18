@@ -238,7 +238,7 @@ export function LeadsPageClient({
       <ConfirmModal
         isOpen={isDeleteConfirmOpen}
         title="Arquivar leads"
-        message={`Tem certeza que deseja arquivar ${selectedLeadIds.size} lead${selectedLeadIds.size === 1 ? "" : "s"} selecionado${selectedLeadIds.size === 1 ? "" : "s"}? Eles somem da lista, mas os dados continuam salvos.`}
+        message={`Tem certeza que deseja arquivar ${selectedLeadIds.size} lead${selectedLeadIds.size === 1 ? "" : "s"} selecionado${selectedLeadIds.size === 1 ? "" : "s"}? Eles somem da lista (inclusive as conversas do WhatsApp ligadas a eles), mas os dados continuam salvos.`}
         confirmText="Arquivar"
         cancelText="Cancelar"
         isDangerous

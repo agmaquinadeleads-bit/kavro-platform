@@ -109,8 +109,14 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
   let conversations: Array<{ id: string; contact_name: string | null; remote_jid: string; unread_count: number; last_message_preview: string | null; last_message_at: string | null; connection_id: string }> = [];
   if (selectedConnectionId) {
     // Grupos (@g.us) não são leads — não aparecem na lista de conversas.
-    const response = await supabase.from("whatsapp_conversations").select("id, contact_name, remote_jid, unread_count, last_message_preview, last_message_at, connection_id").eq("org_id", orgId).eq("connection_id", selectedConnectionId).not("remote_jid", "like", "%@g.us").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
-    conversations = response.data ?? [];
+    // leads(deleted_at) é um embed pela FK whatsapp_conversations.lead_id
+    // — lead arquivado (deleted_at preenchido) some da conversa também,
+    // sem precisar tocar em whatsapp_conversations/whatsapp_messages:
+    // se o lead for restaurado um dia, a conversa volta a aparecer
+    // sozinha. Conversa sem lead vinculado (lead_id null, ex: mensagem
+    // de antes desse recurso) continua aparecendo normalmente.
+    const response = await supabase.from("whatsapp_conversations").select("id, contact_name, remote_jid, unread_count, last_message_preview, last_message_at, connection_id, leads(deleted_at)").eq("org_id", orgId).eq("connection_id", selectedConnectionId).not("remote_jid", "like", "%@g.us").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
+    conversations = (response.data ?? []).filter((conversation) => !conversation.leads || conversation.leads.deleted_at === null);
   }
   const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
   if (selectedConversation && selectedConversation.unread_count > 0) {
