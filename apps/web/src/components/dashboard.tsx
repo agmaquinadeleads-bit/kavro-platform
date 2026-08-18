@@ -9,9 +9,9 @@ import { DashboardChartsLoader } from "./dashboard-charts-loader";
 import { DashboardFilterBar } from "./DashboardFilterBar";
 
 // DashboardStage/DashboardLead continuam exportados daqui porque outros módulos
-// (MoveLeadForm, /app/pipeline/page.tsx) dependem desses tipos, mesmo que o
+// (KanbanBoard, /app/pipeline/page.tsx) dependem desses tipos, mesmo que o
 // componente Dashboard não use mais stages/leads diretamente (movido pro Kanban).
-export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean };
+export type DashboardStage = { id: string; name: string; position: number; isWon: boolean; isLost: boolean; requiresProposal: boolean };
 export type DashboardLeadTag = { id: string; name: string; color: string };
 export type DashboardLead = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stageId: string; valueInCents: number; version: number; followUpAt: string | null; createdAt: string; tags: DashboardLeadTag[] };
 export type DashboardTask = { id: string; leadId: string; leadName: string; title: string; dueAt: string | null; assignedTo: string | null; version: number };

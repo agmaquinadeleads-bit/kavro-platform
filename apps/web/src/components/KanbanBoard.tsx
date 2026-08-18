@@ -1,8 +1,7 @@
 "use client";
 
 import { CSSProperties, useEffect, useState } from "react";
-import { archiveLead, deleteStage, moveLead, moveStagePosition, renameStage } from "@/app/app/actions";
-import { MoveLeadForm } from "@/components/move-lead-form";
+import { deleteStage, moveLead, moveStagePosition, renameStage } from "@/app/app/actions";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LeadDetailModal } from "./LeadDetailModal";
 import type { DashboardLead, DashboardStage } from "@/components/dashboard";
@@ -30,6 +29,8 @@ type DraggedLead = { leadId: string; version: number; stageId: string };
 type PendingLossMove = { leadId: string; leadName: string; version: number; stageId: string };
 
 type PendingWonMove = { leadId: string; leadName: string; version: number; stageId: string };
+
+type PendingProposalMove = { leadId: string; leadName: string; version: number; stageId: string };
 
 type LossReasonPromptProps = {
   leadName: string;
@@ -257,6 +258,146 @@ function WonProductPrompt({ leadName, onCancel, onConfirm }: WonProductPromptPro
   );
 }
 
+type ProposalPromptProps = {
+  leadName: string;
+  onCancel: () => void;
+  onConfirm: (product: string, valueInReais: string) => void;
+};
+
+// Mesmo padrão visual do WonProductPrompt acima, com um segundo campo pro
+// valor da proposta — pedido do usuário pra etapas tipo "Proposta
+// apresentada": exige produto/serviço E valor antes do lead entrar nelas
+// (pipeline_stages.requires_proposal, validado também no trigger do banco).
+function ProposalPrompt({ leadName, onCancel, onConfirm }: ProposalPromptProps) {
+  const [product, setProduct] = useState("");
+  const [value, setValue] = useState("");
+  const canConfirm = product.trim().length > 0 && Number(value) > 0;
+
+  const overlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000
+  };
+
+  const modalStyle: CSSProperties = {
+    backgroundColor: "var(--surface)",
+    borderRadius: "8px",
+    border: "1px solid var(--line)",
+    padding: "24px",
+    maxWidth: "360px",
+    width: "90%",
+    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)"
+  };
+
+  const titleStyle: CSSProperties = {
+    fontSize: "16px",
+    fontWeight: 600,
+    color: "var(--ink)",
+    margin: "0 0 12px 0"
+  };
+
+  const labelStyle: CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "var(--muted)",
+    margin: "0 0 5px 0"
+  };
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    height: "38px",
+    border: "1px solid var(--line)",
+    borderRadius: "7px",
+    padding: "0 10px",
+    fontSize: "13px",
+    color: "var(--ink)",
+    marginBottom: "14px"
+  };
+
+  const buttonsStyle: CSSProperties = {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "flex-end"
+  };
+
+  const cancelButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: "var(--surface)",
+    color: "var(--ink)",
+    border: "1px solid var(--line)",
+    borderRadius: "6px",
+    cursor: "pointer"
+  };
+
+  const confirmButtonStyle: CSSProperties = {
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 500,
+    backgroundColor: canConfirm ? "var(--primary)" : "var(--muted)",
+    color: "white",
+    border: "1px solid transparent",
+    borderRadius: "6px",
+    cursor: canConfirm ? "pointer" : "not-allowed",
+    opacity: canConfirm ? 1 : 0.7
+  };
+
+  return (
+    <div style={overlayStyle} onClick={onCancel}>
+      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
+        <h2 style={titleStyle}>Qual proposta foi apresentada?</h2>
+        <label style={labelStyle}>Produto/serviço</label>
+        <input
+          type="text"
+          required
+          maxLength={160}
+          autoFocus
+          value={product}
+          onChange={(event) => setProduct(event.target.value)}
+          placeholder="Ex: Plano anual"
+          aria-label={`Produto ou serviço proposto para ${leadName}`}
+          style={inputStyle}
+        />
+        <label style={labelStyle}>Valor (R$)</label>
+        <input
+          type="number"
+          required
+          min="0.01"
+          step="0.01"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="0,00"
+          aria-label={`Valor da proposta para ${leadName}`}
+          style={inputStyle}
+        />
+        <div style={buttonsStyle}>
+          <button type="button" style={cancelButtonStyle} onClick={onCancel}>Cancelar</button>
+          <button
+            type="button"
+            style={confirmButtonStyle}
+            disabled={!canConfirm}
+            onClick={() => {
+              if (canConfirm) onConfirm(product.trim(), value);
+            }}
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type RenameStagePromptProps = {
   stage: DashboardStage;
   onCancel: () => void;
@@ -333,6 +474,16 @@ function RenameStagePrompt({ stage, onCancel }: RenameStagePromptProps) {
     cursor: "pointer"
   };
 
+  const checkboxLabelStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "12px",
+    fontWeight: 500,
+    color: "var(--ink)",
+    marginBottom: "16px"
+  };
+
   return (
     <div style={overlayStyle} onClick={onCancel}>
       <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
@@ -349,6 +500,10 @@ function RenameStagePrompt({ stage, onCancel }: RenameStagePromptProps) {
             aria-label="Novo nome da etapa"
             style={inputStyle}
           />
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" name="requires_proposal" defaultChecked={stage.requiresProposal} />
+            Exigir produto/serviço e valor da proposta ao entrar nessa etapa
+          </label>
           <div style={buttonsStyle}>
             <button type="button" style={cancelButtonStyle} onClick={onCancel}>Cancelar</button>
             <button type="submit" style={confirmButtonStyle}>Salvar</button>
@@ -380,6 +535,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
   const [pendingLossMove, setPendingLossMove] = useState<PendingLossMove | null>(null);
   const [pendingWonMove, setPendingWonMove] = useState<PendingWonMove | null>(null);
+  const [pendingProposalMove, setPendingProposalMove] = useState<PendingProposalMove | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [openMenuStageId, setOpenMenuStageId] = useState<string | null>(null);
@@ -419,7 +575,7 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     }
   }
 
-  async function submitMove(leadId: string, stageId: string, version: number, lossReason: string, wonProduct: string = "") {
+  async function submitMove(leadId: string, stageId: string, version: number, lossReason: string, wonProduct: string = "", proposalProduct: string = "", proposalValue: string = "") {
     setIsMoving(true);
     try {
       const fd = new FormData();
@@ -428,6 +584,8 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
       fd.set("version", String(version));
       fd.set("loss_reason", lossReason ?? "");
       fd.set("won_product", wonProduct ?? "");
+      fd.set("proposal_product", proposalProduct ?? "");
+      fd.set("proposal_value", proposalValue ?? "");
       // moveLead é uma server action que faz redirect() internamente — esse é
       // o comportamento esperado (Next.js intercepta e navega). Não capturar
       // nem silenciar o erro especial de redirecionamento aqui.
@@ -465,6 +623,19 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
     if (targetStage.isWon) {
       const lead = localLeads.find((item) => item.id === draggedLead.leadId);
       setPendingWonMove({
+        leadId: draggedLead.leadId,
+        leadName: lead?.name ?? "",
+        version: draggedLead.version,
+        stageId: targetStage.id
+      });
+      setDraggedLead(null);
+      setDragOverStageId(null);
+      return;
+    }
+
+    if (targetStage.requiresProposal) {
+      const lead = localLeads.find((item) => item.id === draggedLead.leadId);
+      setPendingProposalMove({
         leadId: draggedLead.leadId,
         leadName: lead?.name ?? "",
         version: draggedLead.version,
@@ -610,28 +781,6 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
                     </button>
                   </h3>
                   <time className="deal-card-date">{arrivalDate(lead.createdAt)}</time>
-
-                  {/* Valor, contato, follow-up e ações só aparecem ao passar o
-                      mouse ou focar via teclado (:focus-within) — mantém o
-                      card enxuto por padrão sem perder acesso às ações. */}
-                  <div className="deal-card-extra">
-                    {lead.tags.length > 0 ? (
-                      <div className="deal-card-tags">
-                        {lead.tags.map((tag) => (
-                          <span key={tag.id} className="deal-card-tag" style={{ backgroundColor: `${tag.color}1a`, color: tag.color }}>
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <strong>{currency(lead.valueInCents)}</strong>
-                    <p className="lead-contact">{lead.phone || lead.email || "Contato não informado"}</p>
-                    {followUpState(lead.followUpAt) ? <span className={`followup-badge ${followUpState(lead.followUpAt)?.kind}`}>{followUpState(lead.followUpAt)?.label}</span> : null}
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <MoveLeadForm leadId={lead.id} leadName={lead.name} version={lead.version} currentStageId={stage.id} stages={stages} />
-                    </div>
-                    <form action={archiveLead} onClick={(event) => event.stopPropagation()}><input type="hidden" name="lead_id" value={lead.id} /><input type="hidden" name="version" value={lead.version} /><button className="archive-button" type="submit" aria-label={`Arquivar ${lead.name}`}>Arquivar</button></form>
-                  </div>
                 </article>
               ))}
             </div>
@@ -661,6 +810,19 @@ export function KanbanBoard({ stages, leads }: KanbanBoardProps) {
             setPendingWonMove(null);
             moveLeadLocally(leadId, stageId);
             void submitMove(leadId, stageId, version, "", product);
+          }}
+        />
+      ) : null}
+
+      {pendingProposalMove ? (
+        <ProposalPrompt
+          leadName={pendingProposalMove.leadName}
+          onCancel={() => setPendingProposalMove(null)}
+          onConfirm={(product, value) => {
+            const { leadId, stageId, version } = pendingProposalMove;
+            setPendingProposalMove(null);
+            moveLeadLocally(leadId, stageId);
+            void submitMove(leadId, stageId, version, "", "", product, value);
           }}
         />
       ) : null}

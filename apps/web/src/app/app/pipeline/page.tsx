@@ -89,7 +89,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
   let leadCountByPipeline = new Map<string, number>();
 
   if (pipeline) {
-    type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean };
+    type StageRow = { id: string; name: string; position: number; is_won: boolean; is_lost: boolean; requires_proposal: boolean };
     type LeadRow = { id: string; name: string; email: string | null; phone: string | null; source: string | null; stage_id: string; value_in_cents: number; version: number; follow_up_at: string | null; created_at: string };
     type OriginRow = { source: string | null };
     type MemberRow = { user_id: string; user_profiles: { full_name: string | null } | { full_name: string | null }[] | null };
@@ -97,7 +97,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
     type LeadTagRow = { lead_id: string; tags: { id: string; name: string; color: string } | { id: string; name: string; color: string }[] | null };
 
     const stagesPromise: Promise<{ data: StageRow[] | null }> = Promise.resolve(
-      supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
+      supabase.from("pipeline_stages").select("id, name, position, is_won, is_lost, requires_proposal").eq("org_id", orgId).eq("pipeline_id", pipeline.id).order("position", { ascending: true })
     );
 
     // org_id + pipeline_id vêm do contexto autenticado (membership, pipeline),
@@ -179,7 +179,7 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
       tagsByLead.set(row.lead_id, list);
     }
 
-    stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost }));
+    stages = (stageRows ?? []).map((stage) => ({ id: stage.id, name: stage.name, position: stage.position, isWon: stage.is_won, isLost: stage.is_lost, requiresProposal: stage.requires_proposal }));
     leads = (leadRows ?? []).map((lead) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, source: lead.source, stageId: lead.stage_id, valueInCents: Number(lead.value_in_cents), version: lead.version, followUpAt: lead.follow_up_at, createdAt: lead.created_at, tags: tagsByLead.get(lead.id) ?? [] }));
     origins = Array.from(new Set((originRows ?? []).map((row) => row.source).filter((source): source is string => source !== null))).sort();
     members = (memberRows ?? []).map((member) => {

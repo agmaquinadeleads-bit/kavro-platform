@@ -8,7 +8,7 @@ type SubmitButtonProps = {
   className?: string;
 };
 
-// Mesmo padrão de MoveButton em move-lead-form.tsx — precisa ser um client
+// Precisa ser um client
 // component separado do <form> porque useFormStatus só funciona em
 // descendente do form, não no form em si.
 export function SubmitButton({ label, pendingLabel, className }: SubmitButtonProps) {

@@ -75,7 +75,9 @@ const moveLeadSchema = z.object({
   stageId: uuidSchema,
   version: z.coerce.number().int().positive(),
   lossReason: z.string().trim().max(160),
-  wonProduct: z.string().trim().max(160)
+  wonProduct: z.string().trim().max(160),
+  proposalProduct: z.string().trim().max(160),
+  proposalValue: z.coerce.number().min(0).max(999_999_999)
 });
 
 export async function moveLead(formData: FormData) {
@@ -84,14 +86,23 @@ export async function moveLead(formData: FormData) {
     stageId: formData.get("stage_id"),
     version: formData.get("version"),
     lossReason: formData.get("loss_reason") ?? "",
-    wonProduct: formData.get("won_product") ?? ""
+    wonProduct: formData.get("won_product") ?? "",
+    proposalProduct: formData.get("proposal_product") ?? "",
+    proposalValue: formData.get("proposal_value") || 0
   });
   if (!input.success) redirect("/app/pipeline?error=invalid_move");
 
   const { supabase, orgId } = await authenticatedContext();
+  const updatePayload: Record<string, unknown> = { stage_id: input.data.stageId, loss_reason: input.data.lossReason || null, won_product: input.data.wonProduct || null };
+  // proposal_product/value_in_cents só entram no update quando informados —
+  // mover pra uma etapa que não exige proposta não deve apagar um valor já
+  // registrado antes.
+  if (input.data.proposalProduct) updatePayload.proposal_product = input.data.proposalProduct;
+  if (input.data.proposalValue > 0) updatePayload.value_in_cents = Math.round(input.data.proposalValue * 100);
+
   const { data, error } = await supabase
     .from("leads")
-    .update({ stage_id: input.data.stageId, loss_reason: input.data.lossReason || null, won_product: input.data.wonProduct || null })
+    .update(updatePayload)
     .eq("id", input.data.leadId)
     .eq("org_id", orgId)
     .eq("version", input.data.version)
@@ -192,11 +203,12 @@ export async function updateLead(formData: FormData) {
 const stageSchema = z.object({
   name: z.string().trim().min(1).max(100),
   kind: z.enum(["open", "won", "lost"]),
-  pipelineId: uuidSchema
+  pipelineId: uuidSchema,
+  requiresProposal: z.string().optional()
 });
 
 export async function createStage(formData: FormData) {
-  const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind"), pipelineId: formData.get("pipeline_id") });
+  const input = stageSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind"), pipelineId: formData.get("pipeline_id"), requiresProposal: formData.get("requires_proposal") ?? undefined });
   if (!input.success) redirect("/app/pipeline?error=invalid_stage");
 
   const { supabase, orgId, role } = await authenticatedContext();
@@ -213,21 +225,21 @@ export async function createStage(formData: FormData) {
   if (input.data.kind === "lost" && existingStages?.some((stage) => stage.is_lost)) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_kind_exists`);
 
   const position = (existingStages?.[0]?.position ?? -1) + 1;
-  const { error } = await supabase.from("pipeline_stages").insert({ org_id: orgId, pipeline_id: pipeline.id, name: input.data.name, position, is_won: input.data.kind === "won", is_lost: input.data.kind === "lost" });
+  const { error } = await supabase.from("pipeline_stages").insert({ org_id: orgId, pipeline_id: pipeline.id, name: input.data.name, position, is_won: input.data.kind === "won", is_lost: input.data.kind === "lost", requires_proposal: input.data.requiresProposal === "on" });
   if (error) redirect(`/app/pipeline?pipeline=${pipeline.id}&error=stage_create_failed`);
   revalidatePath("/app");
   revalidatePath("/app/pipeline");
   redirect(`/app/pipeline?pipeline=${pipeline.id}&success=stage_created`);
 }
 
-const renameStageSchema = z.object({ stageId: uuidSchema, name: z.string().trim().min(1).max(100) });
+const renameStageSchema = z.object({ stageId: uuidSchema, name: z.string().trim().min(1).max(100), requiresProposal: z.string().optional() });
 
 export async function renameStage(formData: FormData) {
-  const input = renameStageSchema.safeParse({ stageId: formData.get("stage_id"), name: formData.get("name") });
+  const input = renameStageSchema.safeParse({ stageId: formData.get("stage_id"), name: formData.get("name"), requiresProposal: formData.get("requires_proposal") ?? undefined });
   if (!input.success) redirect("/app/pipeline?error=invalid_stage");
   const { supabase, orgId, role } = await authenticatedContext();
   if (role !== "owner" && role !== "admin") redirect("/app/pipeline?error=forbidden");
-  const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id, pipeline_id");
+  const { data, error } = await supabase.from("pipeline_stages").update({ name: input.data.name, requires_proposal: input.data.requiresProposal === "on", updated_at: new Date().toISOString() }).eq("id", input.data.stageId).eq("org_id", orgId).select("id, pipeline_id");
   if (error || !data?.length) redirect("/app/pipeline?error=stage_update_failed");
   const renamedStage = data[0];
   if (!renamedStage) redirect("/app/pipeline?error=stage_update_failed");

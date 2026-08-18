@@ -62,6 +62,15 @@ export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProp
     color: "var(--ink)"
   };
 
+  const checkboxLabelStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: 500,
+    color: "var(--ink)"
+  };
+
   const inputStyle: CSSProperties = {
     height: "42px",
     padding: "0 12px",
@@ -133,6 +142,11 @@ export function NewStageModal({ isOpen, onClose, pipelineId }: NewStageModalProp
               <option value="won">Fechamento</option>
               <option value="lost">Perda</option>
             </select>
+          </label>
+
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" name="requires_proposal" />
+            Exigir produto/serviço e valor da proposta ao entrar nessa etapa
           </label>
 
           <div style={buttonsStyle}>
