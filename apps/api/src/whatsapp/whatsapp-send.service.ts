@@ -2,11 +2,17 @@ import { randomUUID } from "node:crypto";
 import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import type { KavroSession } from "../auth/session";
 
-type SendMessageInput = { connectionId: string; conversationId: string; text: string };
+type SendMessageInput = {
+  connectionId: string;
+  conversationId: string;
+  text: string;
+  media?: { objectKey: string; mimeType: string; messageType: "image" | "audio" };
+};
 type ConversationRow = { id: string };
 type MessageRow = { id: string };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MEDIA_PREVIEW_LABELS: Record<string, string> = { image: "📷 Imagem", audio: "🎤 Áudio" };
 
 // Só cria a mensagem pendente + o item da fila — o envio de verdade
 // (chamar a Evolution ou a Graph API) acontece em
@@ -29,7 +35,7 @@ export class WhatsappSendService {
     if (!UUID_PATTERN.test(input.connectionId) || !UUID_PATTERN.test(input.conversationId)) throw new BadRequestException("Conexão ou conversa inválida");
 
     const trimmedText = input.text.trim();
-    if (!trimmedText) throw new BadRequestException("Mensagem vazia");
+    if (!trimmedText && !input.media) throw new BadRequestException("Mensagem vazia");
     if (trimmedText.length > 20000) throw new BadRequestException("Mensagem muito longa");
 
     const conversation = await this.selectOne<ConversationRow>(
@@ -43,9 +49,11 @@ export class WhatsappSendService {
       connection_id: input.connectionId,
       conversation_id: conversation.id,
       direction: "outbound",
-      message_type: "text",
+      message_type: input.media?.messageType ?? "text",
       status: "pending",
-      text_content: trimmedText,
+      text_content: trimmedText || null,
+      media_object_key: input.media?.objectKey ?? null,
+      media_mime_type: input.media?.mimeType ?? null,
       // Sem isso fica null até o worker confirmar o envio (ou pra sempre,
       // já que sendItem() nunca grava provider_timestamp) — quebra a
       // ordenação cronológica da conversa, que depende dessa coluna.
@@ -59,10 +67,11 @@ export class WhatsappSendService {
 
     // A própria mensagem enviada também vira o "último preview" da
     // conversa — sem isso a lista de conversas só reflete inbound.
+    const preview = trimmedText || (input.media ? MEDIA_PREVIEW_LABELS[input.media.messageType] : "") || "";
     await fetch(`${this.baseUrl()}/rest/v1/whatsapp_conversations?id=eq.${conversation.id}`, {
       method: "PATCH",
       headers: this.serviceHeaders(),
-      body: JSON.stringify({ last_message_preview: trimmedText.slice(0, 500), last_message_at: new Date().toISOString() }),
+      body: JSON.stringify({ last_message_preview: preview.slice(0, 500), last_message_at: new Date().toISOString() }),
       signal: AbortSignal.timeout(12000)
     });
 

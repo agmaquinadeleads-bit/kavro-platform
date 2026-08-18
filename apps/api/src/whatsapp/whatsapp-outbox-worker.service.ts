@@ -6,7 +6,7 @@ import { MetaWhatsappClient } from "./meta-whatsapp.client";
 
 type OutboxItem = { id: number | null; org_id: string | null; message_id: string | null; attempts: number | null };
 type ClaimedItem = { id: number; orgId: string; messageId: string; attempts: number };
-type MessageRow = { id: string; connection_id: string; conversation_id: string; text_content: string | null };
+type MessageRow = { id: string; connection_id: string; conversation_id: string; message_type: string; text_content: string | null; media_object_key: string | null; media_mime_type: string | null };
 type ConnectionRow = { id: string; provider: "evolution" | "whatsapp_cloud"; instance_name: string };
 type ConversationRow = { remote_jid: string };
 type CredentialsRow = { external_phone_number_id: string | null };
@@ -105,10 +105,10 @@ export class WhatsappOutboxWorkerService {
   private async sendItem(item: ClaimedItem) {
     const message = await this.selectOne<MessageRow>(
       "whatsapp_messages",
-      `id=eq.${item.messageId}&org_id=eq.${item.orgId}&select=id,connection_id,conversation_id,text_content`
+      `id=eq.${item.messageId}&org_id=eq.${item.orgId}&select=id,connection_id,conversation_id,message_type,text_content,media_object_key,media_mime_type`
     );
     if (!message) throw new Error("Mensagem não encontrada");
-    if (!message.text_content) throw new Error("Mensagem sem texto");
+    if (!message.text_content && !message.media_object_key) throw new Error("Mensagem sem texto e sem mídia");
 
     const connection = await this.selectOne<ConnectionRow>(
       "whatsapp_connections",
@@ -122,9 +122,11 @@ export class WhatsappOutboxWorkerService {
     );
     if (!conversation) throw new Error("Conversa não encontrada");
 
-    const externalId = connection.provider === "evolution"
-      ? await this.sendViaEvolution(connection, conversation, message.text_content)
-      : await this.sendViaMeta(connection, conversation, message.text_content);
+    const externalId = message.media_object_key && (message.message_type === "image" || message.message_type === "audio")
+      ? await this.sendMedia(connection, conversation, message as MessageRow & { media_object_key: string })
+      : connection.provider === "evolution"
+        ? await this.sendViaEvolution(connection, conversation, message.text_content ?? "")
+        : await this.sendViaMeta(connection, conversation, message.text_content ?? "");
 
     await this.patch("whatsapp_messages", `id=eq.${item.messageId}`, { status: "sent", sent_at: new Date().toISOString(), external_id: externalId });
     await this.patch("whatsapp_outbox", `id=eq.${item.id}`, { status: "sent" });
@@ -146,6 +148,38 @@ export class WhatsappOutboxWorkerService {
     if (!credentials?.external_phone_number_id) throw new Error("Conexão sem número configurado");
     const accessToken = await this.rpc<string>("get_whatsapp_access_token", { p_connection_id: connection.id });
     return await this.metaWhatsapp.sendText(credentials.external_phone_number_id, accessToken, conversation.remote_jid, text);
+  }
+
+  private async downloadMedia(objectKey: string): Promise<Buffer> {
+    const response = await fetch(`${this.baseUrl()}/storage/v1/object/whatsapp-media/${objectKey}`, {
+      headers: this.serviceHeaders(),
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!response.ok) throw new Error(`Falha ao baixar mídia do Storage (${response.status})`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  private async sendMedia(connection: ConnectionRow, conversation: ConversationRow, message: MessageRow & { media_object_key: string }): Promise<string> {
+    const bytes = await this.downloadMedia(message.media_object_key);
+    const mimeType = message.media_mime_type || (message.message_type === "image" ? "image/jpeg" : "audio/ogg");
+
+    if (connection.provider === "evolution") {
+      const number = conversation.remote_jid.split("@")[0] ?? conversation.remote_jid;
+      const base64 = bytes.toString("base64");
+      const result = message.message_type === "audio"
+        ? await this.evolution.sendAudio(connection.instance_name, number, base64) as EvolutionSendResponse
+        : await this.evolution.sendImage(connection.instance_name, number, base64, mimeType, message.text_content ?? undefined) as EvolutionSendResponse;
+      return result.key?.id ?? randomUUID();
+    }
+
+    const credentials = await this.selectOne<CredentialsRow>(
+      "whatsapp_provider_credentials",
+      `connection_id=eq.${connection.id}&select=external_phone_number_id`
+    );
+    if (!credentials?.external_phone_number_id) throw new Error("Conexão sem número configurado");
+    const accessToken = await this.rpc<string>("get_whatsapp_access_token", { p_connection_id: connection.id });
+    const mediaId = await this.metaWhatsapp.uploadMedia(credentials.external_phone_number_id, accessToken, bytes, mimeType);
+    return await this.metaWhatsapp.sendMedia(credentials.external_phone_number_id, accessToken, conversation.remote_jid, mediaId, message.message_type as "image" | "audio", message.text_content ?? undefined);
   }
 
   private async handleFailure(item: ClaimedItem, errorMessage: string) {

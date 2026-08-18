@@ -58,11 +58,17 @@ export class WhatsappController {
   }
 
   @Post("messages")
-  sendMessage(@CurrentSession() session: KavroSession, @Body() body: { connectionId?: string; conversationId?: string; text?: string }) {
+  sendMessage(
+    @CurrentSession() session: KavroSession,
+    @Body() body: { connectionId?: string; conversationId?: string; text?: string; mediaObjectKey?: string; mediaMimeType?: string; mediaMessageType?: "image" | "audio" }
+  ) {
     return this.whatsappSend.send(session, {
       connectionId: body.connectionId ?? "",
       conversationId: body.conversationId ?? "",
-      text: body.text ?? ""
+      text: body.text ?? "",
+      media: body.mediaObjectKey && body.mediaMimeType && body.mediaMessageType
+        ? { objectKey: body.mediaObjectKey, mimeType: body.mediaMimeType, messageType: body.mediaMessageType }
+        : undefined
     });
   }
 }

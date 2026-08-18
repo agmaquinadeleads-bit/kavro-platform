@@ -7,8 +7,11 @@ import { sendWhatsappMessage } from "./actions";
 type WhatsappPageProps = { searchParams: Promise<{ conversation?: string; connection?: string; error?: string; success?: string }> };
 
 const errorMessages: Record<string, string> = {
-  invalid_message: "Revise a mensagem antes de enviar.",
-  send_failed: "Não foi possível enviar a mensagem. Tente novamente."
+  invalid_message: "Escreva algo ou anexe um áudio/imagem antes de enviar.",
+  send_failed: "Não foi possível enviar a mensagem. Tente novamente.",
+  invalid_media: "Só é possível anexar áudio ou imagem.",
+  media_too_large: "Arquivo maior que 10MB — escolha um menor.",
+  media_upload_failed: "Não foi possível enviar o anexo. Tente novamente."
 };
 const successMessages: Record<string, string> = {
   message_sent: "Mensagem enviada."

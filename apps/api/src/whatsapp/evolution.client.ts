@@ -36,4 +36,22 @@ export class EvolutionClient {
   connectionState(instanceName: string) { return this.request<Record<string, unknown>>(`/instance/connectionState/${this.instancePath(instanceName)}`); }
   logout(instanceName: string) { return this.request<Record<string, unknown>>(`/instance/logout/${this.instancePath(instanceName)}`, { method: "DELETE" }); }
   sendText(instanceName: string, number: string, text: string) { return this.request<Record<string, unknown>>(`/message/sendText/${this.instancePath(instanceName)}`, { method: "POST", body: JSON.stringify({ number, text }) }); }
+
+  // Imagem enviada como mídia normal (mediatype "image", com legenda
+  // opcional) — endpoint separado do de texto na API da Evolution.
+  sendImage(instanceName: string, number: string, base64: string, mimetype: string, caption: string | undefined) {
+    return this.request<Record<string, unknown>>(`/message/sendMedia/${this.instancePath(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, mediatype: "image", mimetype, media: base64, caption: caption || undefined })
+    });
+  }
+
+  // Áudio vai por um endpoint próprio (nota de voz / ptt), não pelo
+  // sendMedia genérico.
+  sendAudio(instanceName: string, number: string, base64: string) {
+    return this.request<Record<string, unknown>>(`/message/sendWhatsAppAudio/${this.instancePath(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, audio: base64 })
+    });
+  }
 }
