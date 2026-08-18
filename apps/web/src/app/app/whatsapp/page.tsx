@@ -116,7 +116,13 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     // sozinha. Conversa sem lead vinculado (lead_id null, ex: mensagem
     // de antes desse recurso) continua aparecendo normalmente.
     const response = await supabase.from("whatsapp_conversations").select("id, contact_name, remote_jid, unread_count, last_message_preview, last_message_at, connection_id, leads(deleted_at)").eq("org_id", orgId).eq("connection_id", selectedConnectionId).not("remote_jid", "like", "%@g.us").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
-    conversations = (response.data ?? []).filter((conversation) => !conversation.leads || conversation.leads.deleted_at === null);
+    // O tipo gerado trata o embed como array mesmo sendo N:1 (FK sem
+    // unique não é reconhecida como 1:1 pelo gerador de tipos) — na
+    // prática é sempre 0 ou 1 registro.
+    conversations = (response.data ?? []).filter((conversation) => {
+      const linkedLead = conversation.leads?.[0];
+      return !linkedLead || linkedLead.deleted_at === null;
+    });
   }
   const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
   if (selectedConversation && selectedConversation.unread_count > 0) {
