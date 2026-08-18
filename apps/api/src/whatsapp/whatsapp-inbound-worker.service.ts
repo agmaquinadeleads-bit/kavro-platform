@@ -86,10 +86,9 @@ function normalize(provider: "evolution" | "whatsapp_cloud", payload: Record<str
 // Drena whatsapp_webhook_events e popula whatsapp_conversations/
 // whatsapp_messages — sem isso a caixa de entrada nunca mostra nada, por
 // mais que o webhook esteja capturando eventos brutos corretamente.
-// A cada 15s (mais frequente que o worker de publicação de conteúdo, que
-// roda a cada minuto — isso é chat ao vivo) processa até
-// MAX_ITEMS_PER_TICK itens, pra não acumular atraso se vários eventos
-// chegarem em rajada.
+// A cada 5s (era 15s — parte do delay percebido pelo usuário pra
+// mensagem aparecer no CRM vinha daqui) processa até MAX_ITEMS_PER_TICK
+// itens, pra não acumular atraso se vários eventos chegarem em rajada.
 @Injectable()
 export class WhatsappInboundWorkerService {
   private readonly logger = new Logger(WhatsappInboundWorkerService.name);
@@ -151,7 +150,7 @@ export class WhatsappInboundWorkerService {
     if (!response.ok) throw new Error(`Atualização em ${table} falhou (${response.status}): ${await response.text()}`);
   }
 
-  @Cron("*/15 * * * * *")
+  @Cron("*/5 * * * * *")
   async drainOnce() {
     if (!this.configured()) return;
     for (let iteration = 0; iteration < MAX_ITEMS_PER_TICK; iteration += 1) {
