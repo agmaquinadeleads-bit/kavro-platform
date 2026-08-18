@@ -18,8 +18,8 @@ type ClaimedEvent = {
   payload: Record<string, unknown>;
 };
 
-type ConnectionRow = { provider: "evolution" | "whatsapp_cloud" };
-type ConversationRow = { id: string; unread_count: number };
+type ConnectionRow = { provider: "evolution" | "whatsapp_cloud"; created_by: string };
+type ConversationRow = { id: string; unread_count: number; lead_id: string | null };
 
 type NormalizedMessage = {
   remoteJid: string;
@@ -189,7 +189,7 @@ export class WhatsappInboundWorkerService {
   }
 
   private async processEvent(item: ClaimedEvent) {
-    const connection = await this.selectOne<ConnectionRow>("whatsapp_connections", `id=eq.${item.connectionId}&org_id=eq.${item.orgId}&select=provider`);
+    const connection = await this.selectOne<ConnectionRow>("whatsapp_connections", `id=eq.${item.connectionId}&org_id=eq.${item.orgId}&select=provider,created_by`);
     if (!connection) throw new Error("Conexão não encontrada");
 
     const normalized = normalize(connection.provider, item.payload);
@@ -221,6 +221,26 @@ export class WhatsappInboundWorkerService {
     if (insertedMessage.conflict) return;
     this.logger.debug(`Mensagem ${normalized.fromMe ? "outbound" : "inbound"} gravada: conversation=${conversation.id} type=${normalized.messageType}`);
 
+    // Cria o lead automaticamente na primeira mensagem de verdade recebida
+    // de um contato novo — pedido do usuário. Só pra mensagem realmente
+    // recebida (não eco de envio nosso) e só se a conversa ainda não tem
+    // lead vinculado; create_lead_from_whatsapp também trava a linha da
+    // conversa antes de checar isso, então corrida entre duas mensagens
+    // quase simultâneas do mesmo contato novo não cria lead duplicado.
+    if (!normalized.fromMe && !conversation.lead_id) {
+      try {
+        await this.rpc("create_lead_from_whatsapp", {
+          p_org_id: item.orgId,
+          p_conversation_id: conversation.id,
+          p_created_by: connection.created_by,
+          p_name: normalized.contactName || normalized.remoteJid.split("@")[0] || "Contato do WhatsApp",
+          p_phone: normalized.remoteJid.split("@")[0] ?? normalized.remoteJid
+        });
+      } catch (error) {
+        this.logger.error(`Falha ao criar lead automático (conversation=${conversation.id}): ${(error as Error).message}`);
+      }
+    }
+
     await this.patch("whatsapp_conversations", `id=eq.${conversation.id}`, {
       last_message_preview: (normalized.textContent ?? `[${normalized.messageType}]`).slice(0, 500),
       last_message_at: normalized.providerTimestamp ?? new Date().toISOString(),
@@ -232,7 +252,7 @@ export class WhatsappInboundWorkerService {
   }
 
   private async findOrCreateConversation(orgId: string, connectionId: string, normalized: NormalizedMessage): Promise<ConversationRow> {
-    const existingQuery = `org_id=eq.${orgId}&connection_id=eq.${connectionId}&remote_jid=eq.${encodeURIComponent(normalized.remoteJid)}&select=id,unread_count`;
+    const existingQuery = `org_id=eq.${orgId}&connection_id=eq.${connectionId}&remote_jid=eq.${encodeURIComponent(normalized.remoteJid)}&select=id,unread_count,lead_id`;
     const existing = await this.selectOne<ConversationRow>("whatsapp_conversations", existingQuery);
     if (existing) return existing;
 
