@@ -49,7 +49,10 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
   const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
   let messages: Array<{ id: string; direction: string; message_type: string; text_content: string | null; status: string; provider_timestamp: string | null; created_at: string }> = [];
   if (selectedConversation) {
-    const response = await supabase.from("whatsapp_messages").select("id, direction, message_type, text_content, status, provider_timestamp, created_at").eq("org_id", orgId).eq("conversation_id", selectedConversation.id).order("provider_timestamp", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }).limit(200);
+    // Ordem decrescente (mais recente primeiro) — combina com
+    // flex-direction: column-reverse no .message-stream (globals.css), que
+    // já inicia a rolagem na mensagem mais recente sem precisar de JS.
+    const response = await supabase.from("whatsapp_messages").select("id, direction, message_type, text_content, status, provider_timestamp, created_at").eq("org_id", orgId).eq("conversation_id", selectedConversation.id).order("provider_timestamp", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(200);
     messages = response.data ?? [];
   }
 
