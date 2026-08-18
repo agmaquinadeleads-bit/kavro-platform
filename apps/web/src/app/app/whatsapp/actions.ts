@@ -27,7 +27,8 @@ const MEDIA_EXTENSIONS: Record<string, string> = {
 };
 
 function extensionFor(file: File): string {
-  if (MEDIA_EXTENSIONS[file.type]) return MEDIA_EXTENSIONS[file.type];
+  const fromMime = MEDIA_EXTENSIONS[file.type];
+  if (fromMime) return fromMime;
   const fromName = file.name.split(".").pop();
   if (fromName && fromName.length <= 10 && fromName !== file.name) return fromName.toLowerCase();
   return "bin";
