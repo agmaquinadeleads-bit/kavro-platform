@@ -60,6 +60,13 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     conversations = response.data ?? [];
   }
   const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
+  if (selectedConversation && selectedConversation.unread_count > 0) {
+    // Abrir a conversa marca como lida — sem isso o badge de não lidas
+    // fica preso pra sempre (0032_whatsapp_mark_conversation_read.sql
+    // libera só essa coluna pro navegador).
+    await supabase.from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", selectedConversation.id).eq("org_id", orgId);
+    selectedConversation.unread_count = 0;
+  }
   let messages: Array<{ id: string; direction: string; message_type: string; text_content: string | null; status: string; provider_timestamp: string | null; created_at: string }> = [];
   if (selectedConversation) {
     // Ordem decrescente (mais recente primeiro) — combina com
