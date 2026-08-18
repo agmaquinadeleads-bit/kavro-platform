@@ -26,7 +26,10 @@ export class EvolutionClient {
   }
 
   createInstance(instanceName: string, webhookUrl: string, webhookSecret: string) {
-    return this.request<Record<string, unknown>>("/instance/create", { method: "POST", body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true, webhook: { enabled: true, url: webhookUrl, webhookByEvents: false, base64: false, headers: { "X-Kavro-Webhook-Secret": webhookSecret }, events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_DELETE", "SEND_MESSAGE", "CONNECTION_UPDATE"] } }) });
+    // base64:true manda a mídia (áudio, imagem etc.) já decodificada dentro
+    // do próprio payload do webhook — sem isso não tem como escutar os
+    // áudios recebidos no CRM, só o texto das mensagens chega.
+    return this.request<Record<string, unknown>>("/instance/create", { method: "POST", body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true, webhook: { enabled: true, url: webhookUrl, webhookByEvents: false, base64: true, headers: { "X-Kavro-Webhook-Secret": webhookSecret }, events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_DELETE", "SEND_MESSAGE", "CONNECTION_UPDATE"] } }) });
   }
 
   connect(instanceName: string) { return this.request<Record<string, unknown>>(`/instance/connect/${this.instancePath(instanceName)}`); }

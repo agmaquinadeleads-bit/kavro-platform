@@ -28,6 +28,8 @@ type NormalizedMessage = {
   textContent: string | null;
   providerTimestamp: string | null;
   fromMe: boolean;
+  mediaObjectKey: string | null;
+  mediaMimeType: string | null;
 };
 
 const WORKER_ID = `worker-${randomUUID()}`;
@@ -53,10 +55,12 @@ function normalize(provider: "evolution" | "whatsapp_cloud", payload: Record<str
     return {
       remoteJid,
       contactName: typeof payload.push_name === "string" ? payload.push_name : null,
-      messageType: rawType === "conversation" ? "text" : (VALID_MESSAGE_TYPES.has(rawType) ? rawType : "unknown"),
+      messageType: VALID_MESSAGE_TYPES.has(rawType) ? rawType : "unknown",
       textContent: typeof payload.text === "string" ? payload.text : null,
       providerTimestamp: toIsoTimestamp(payload.timestamp),
-      fromMe: payload.from_me === true
+      fromMe: payload.from_me === true,
+      mediaObjectKey: typeof payload.media_object_key === "string" ? payload.media_object_key : null,
+      mediaMimeType: typeof payload.media_mime_type === "string" ? payload.media_mime_type : null
     };
   }
 
@@ -73,7 +77,9 @@ function normalize(provider: "evolution" | "whatsapp_cloud", payload: Record<str
     messageType: VALID_MESSAGE_TYPES.has(rawType) ? rawType : "unknown",
     textContent: typeof payload.text === "string" ? payload.text : null,
     providerTimestamp: toIsoTimestamp(payload.timestamp),
-    fromMe: false
+    fromMe: false,
+    mediaObjectKey: null,
+    mediaMimeType: null
   };
 }
 
@@ -206,7 +212,9 @@ export class WhatsappInboundWorkerService {
       status: normalized.fromMe ? "sent" : "received",
       sender_jid: normalized.remoteJid,
       text_content: normalized.textContent,
-      provider_timestamp: normalized.providerTimestamp
+      provider_timestamp: normalized.providerTimestamp,
+      media_object_key: normalized.mediaObjectKey,
+      media_mime_type: normalized.mediaMimeType
     });
     // Conflito de external_id = esse evento já virou mensagem antes
     // (reprocessamento, ou eco de um envio feito pelo Kavro) — não é erro,
