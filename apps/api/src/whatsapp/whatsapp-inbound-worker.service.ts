@@ -222,12 +222,16 @@ export class WhatsappInboundWorkerService {
     this.logger.debug(`Mensagem ${normalized.fromMe ? "outbound" : "inbound"} gravada: conversation=${conversation.id} type=${normalized.messageType}`);
 
     // Cria o lead automaticamente na primeira mensagem de verdade recebida
-    // de um contato novo — pedido do usuário. Só pra mensagem realmente
-    // recebida (não eco de envio nosso) e só se a conversa ainda não tem
-    // lead vinculado; create_lead_from_whatsapp também trava a linha da
-    // conversa antes de checar isso, então corrida entre duas mensagens
-    // quase simultâneas do mesmo contato novo não cria lead duplicado.
-    if (!normalized.fromMe && !conversation.lead_id) {
+    // de um contato novo — pedido do usuário. Chama em toda mensagem
+    // realmente recebida (não eco de envio nosso), mesmo quando a
+    // conversa já tem lead_id: create_lead_from_whatsapp() é quem decide
+    // se cria (lead ainda não existe, ou o vinculado foi arquivado — sem
+    // isso, excluir o lead e o contato mandar mensagem de novo nunca
+    // gerava um lead novo) ou só devolve o id de um lead ainda ativo, sem
+    // duplicar. A trava (FOR UPDATE) na linha da conversa, dentro da RPC,
+    // evita corrida entre duas mensagens quase simultâneas do mesmo
+    // contato.
+    if (!normalized.fromMe) {
       try {
         await this.rpc("create_lead_from_whatsapp", {
           p_org_id: item.orgId,
