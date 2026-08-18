@@ -64,7 +64,10 @@ export function extractEvolutionMessages(payload: EvolutionWebhookPayload): Extr
   for (const item of items) {
     const remoteJid = boundedString(item.key?.remoteJid, 160);
     const externalId = boundedString(item.key?.id, 255);
-    if (!remoteJid || !externalId || item.key?.fromMe) continue;
+    if (!remoteJid || !externalId) continue;
+    // Grupos (@g.us) e listas de transmissão (@broadcast) não são leads —
+    // não interessam pro CRM, mesmo que a Evolution mande o evento.
+    if (remoteJid.endsWith("@g.us") || remoteJid.endsWith("@broadcast")) continue;
 
     messages.push({
       providerEventId: externalId,
@@ -73,7 +76,12 @@ export function extractEvolutionMessages(payload: EvolutionWebhookPayload): Extr
         push_name: boundedString(item.pushName, 160),
         message_type: messageTypeOf(item),
         text: extractText(item.message),
-        timestamp: item.messageTimestamp !== undefined ? String(item.messageTimestamp) : undefined
+        timestamp: item.messageTimestamp !== undefined ? String(item.messageTimestamp) : undefined,
+        // Mensagem mandada do próprio celular (fora do Kavro) também
+        // precisa aparecer na conversa — só a mandada PELO Kavro já fica
+        // gravada na hora do envio; o worker de recebimento reconcilia
+        // pelo external_id pra não duplicar.
+        from_me: item.key?.fromMe === true
       }
     });
   }

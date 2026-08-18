@@ -27,6 +27,7 @@ type NormalizedMessage = {
   messageType: string;
   textContent: string | null;
   providerTimestamp: string | null;
+  fromMe: boolean;
 };
 
 const WORKER_ID = `worker-${randomUUID()}`;
@@ -54,13 +55,15 @@ function normalize(provider: "evolution" | "whatsapp_cloud", payload: Record<str
       contactName: typeof payload.push_name === "string" ? payload.push_name : null,
       messageType: rawType === "conversation" ? "text" : (VALID_MESSAGE_TYPES.has(rawType) ? rawType : "unknown"),
       textContent: typeof payload.text === "string" ? payload.text : null,
-      providerTimestamp: toIsoTimestamp(payload.timestamp)
+      providerTimestamp: toIsoTimestamp(payload.timestamp),
+      fromMe: payload.from_me === true
     };
   }
 
   // whatsapp_cloud (Meta): não existe JID — usa o telefone (dígitos, campo
   // "from" da Cloud API) como identificador estável da conversa dentro
-  // dessa conexão.
+  // dessa conexão. A Cloud API não ecoa mensagens enviadas por nós nesse
+  // mesmo webhook (é sempre inbound de verdade).
   const from = typeof payload.from === "string" ? payload.from : null;
   if (!from) return null;
   const rawType = typeof payload.type === "string" ? payload.type : "unknown";
@@ -69,7 +72,8 @@ function normalize(provider: "evolution" | "whatsapp_cloud", payload: Record<str
     contactName: null,
     messageType: VALID_MESSAGE_TYPES.has(rawType) ? rawType : "unknown",
     textContent: typeof payload.text === "string" ? payload.text : null,
-    providerTimestamp: toIsoTimestamp(payload.timestamp)
+    providerTimestamp: toIsoTimestamp(payload.timestamp),
+    fromMe: false
   };
 }
 
@@ -188,28 +192,34 @@ export class WhatsappInboundWorkerService {
 
     const conversation = await this.findOrCreateConversation(item.orgId, item.connectionId, normalized);
 
+    // fromMe=true: mensagem enviada do próprio celular (fora do Kavro) ou
+    // eco de uma mensagem já enviada pelo Kavro (nesse caso o conflito de
+    // external_id abaixo evita duplicar — a linha já existe, criada na
+    // hora do envio).
     const insertedMessage = await this.insert("whatsapp_messages", {
       org_id: item.orgId,
       connection_id: item.connectionId,
       conversation_id: conversation.id,
       external_id: item.providerEventId,
-      direction: "inbound",
+      direction: normalized.fromMe ? "outbound" : "inbound",
       message_type: normalized.messageType,
-      status: "received",
+      status: normalized.fromMe ? "sent" : "received",
       sender_jid: normalized.remoteJid,
       text_content: normalized.textContent,
       provider_timestamp: normalized.providerTimestamp
     });
     // Conflito de external_id = esse evento já virou mensagem antes
-    // (reprocessamento) — não é erro, só evita repetir o efeito colateral
-    // de atualizar a conversa de novo.
+    // (reprocessamento, ou eco de um envio feito pelo Kavro) — não é erro,
+    // só evita repetir o efeito colateral de atualizar a conversa de novo.
     if (insertedMessage.conflict) return;
-    this.logger.debug(`Mensagem inbound gravada: conversation=${conversation.id} type=${normalized.messageType}`);
+    this.logger.debug(`Mensagem ${normalized.fromMe ? "outbound" : "inbound"} gravada: conversation=${conversation.id} type=${normalized.messageType}`);
 
     await this.patch("whatsapp_conversations", `id=eq.${conversation.id}`, {
       last_message_preview: (normalized.textContent ?? `[${normalized.messageType}]`).slice(0, 500),
       last_message_at: normalized.providerTimestamp ?? new Date().toISOString(),
-      unread_count: conversation.unread_count + 1,
+      // Mensagem enviada (por nós ou pelo próprio celular) não conta como
+      // "não lida" — isso é só pra mensagem nova vinda do contato.
+      ...(normalized.fromMe ? {} : { unread_count: conversation.unread_count + 1 }),
       ...(normalized.contactName ? { contact_name: normalized.contactName } : {})
     });
   }

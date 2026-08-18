@@ -15,6 +15,22 @@ const successMessages: Record<string, string> = {
 
 function messageTime(value: string) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value)); }
 
+const MEDIA_LABELS: Record<string, string> = {
+  image: "Imagem",
+  video: "Vídeo",
+  audio: "Áudio",
+  document: "Documento",
+  sticker: "Figurinha",
+  location: "Localização",
+  contact: "Contato",
+  reaction: "Reação"
+};
+
+function messagePreview(textContent: string | null, messageType: string) {
+  if (textContent) return textContent;
+  return MEDIA_LABELS[messageType] ?? "Conteúdo não suportado ainda";
+}
+
 export default async function WhatsappPage({ searchParams }: WhatsappPageProps) {
   const params = await searchParams;
   const { supabase, orgId, role } = await getAuthContext();
@@ -26,7 +42,8 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
   const selectedConnectionId = connections?.some((connection) => connection.id === params.connection) ? params.connection : connections?.[0]?.id;
   let conversations: Array<{ id: string; contact_name: string | null; remote_jid: string; unread_count: number; last_message_preview: string | null; last_message_at: string | null; connection_id: string }> = [];
   if (selectedConnectionId) {
-    const response = await supabase.from("whatsapp_conversations").select("id, contact_name, remote_jid, unread_count, last_message_preview, last_message_at, connection_id").eq("org_id", orgId).eq("connection_id", selectedConnectionId).order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
+    // Grupos (@g.us) não são leads — não aparecem na lista de conversas.
+    const response = await supabase.from("whatsapp_conversations").select("id, contact_name, remote_jid, unread_count, last_message_preview, last_message_at, connection_id").eq("org_id", orgId).eq("connection_id", selectedConnectionId).not("remote_jid", "like", "%@g.us").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
     conversations = response.data ?? [];
   }
   const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
@@ -40,7 +57,7 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     {feedback ? <div className={`feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>{feedback.message}</div> : null}
     {!connections?.length ? <section className="inbox-empty"><div className="whatsapp-mark">◉</div><p className="eyebrow">CAIXA COMPARTILHADA</p><h2>Conecte o primeiro número</h2><p>As conversas aparecerão aqui depois que um administrador conectar o WhatsApp com segurança pelo backend do Kavro.</p>{role !== "member" ? <Link href="/app/whatsapp/settings">Preparar conexão</Link> : <span>Solicite a conexão ao administrador da empresa.</span>}</section> : <section className="inbox-layout">
       <aside className="conversation-panel"><div className="conversation-search"><input type="search" placeholder="Buscar conversa" aria-label="Buscar conversa" disabled /></div>{conversations.length ? <nav aria-label="Conversas do WhatsApp">{conversations.map((conversation) => <Link className={conversation.id === selectedConversation?.id ? "active" : ""} href={`/app/whatsapp?connection=${selectedConnectionId}&conversation=${conversation.id}`} key={conversation.id}><span>{(conversation.contact_name || conversation.remote_jid)[0]?.toUpperCase()}</span><div><strong>{conversation.contact_name || conversation.remote_jid}</strong><small>{conversation.last_message_preview || "Sem mensagens"}</small></div>{conversation.last_message_at ? <time>{messageTime(conversation.last_message_at)}</time> : null}{conversation.unread_count > 0 ? <b>{conversation.unread_count}</b> : null}</Link>)}</nav> : <div className="conversation-empty">Nenhuma conversa recebida neste número.</div>}</aside>
-      <section className="chat-panel">{selectedConversation ? <><header><div className="chat-avatar">{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div></header><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}><small>{message.message_type !== "text" ? message.message_type.toUpperCase() : null}</small><p>{message.text_content || "Mídia protegida"}</p><time>{messageTime(message.provider_timestamp || message.created_at)} · {message.status}</time></article>) : <div className="chat-empty">A conversa ainda não possui mensagens.</div>}</div><form action={sendWhatsappMessage} className="chat-composer"><input type="hidden" name="connection_id" value={selectedConnectionId} /><input type="hidden" name="conversation_id" value={selectedConversation.id} /><textarea name="text" aria-label="Mensagem" placeholder="Digite uma mensagem" required maxLength={20000} /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></form></> : <div className="chat-empty">Selecione uma conversa para começar.</div>}</section>
+      <section className="chat-panel">{selectedConversation ? <><header><div className="chat-avatar">{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div></header><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}><small>{message.message_type !== "text" ? message.message_type.toUpperCase() : null}</small><p>{messagePreview(message.text_content, message.message_type)}</p><time>{messageTime(message.provider_timestamp || message.created_at)} · {message.status}</time></article>) : <div className="chat-empty">A conversa ainda não possui mensagens.</div>}</div><form action={sendWhatsappMessage} className="chat-composer"><input type="hidden" name="connection_id" value={selectedConnectionId} /><input type="hidden" name="conversation_id" value={selectedConversation.id} /><textarea name="text" aria-label="Mensagem" placeholder="Digite uma mensagem" required maxLength={20000} /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></form></> : <div className="chat-empty">Selecione uma conversa para começar.</div>}</section>
     </section>}
   </main>;
 }
