@@ -72,6 +72,7 @@ export function AppSidebar({ userName, organizationName, canManage }: AppSidebar
           <Link className={isActive("/app/pipeline") ? "active" : ""} href="/app/pipeline" onClick={closeMobileMenu}>◫ <span>Pipeline</span></Link>
           <Link className={isActive("/app/leads") ? "active" : ""} href="/app/leads" onClick={closeMobileMenu}>☰ <span>Leads</span></Link>
           <Link className={isActive("/app/whatsapp") ? "active" : ""} href="/app/whatsapp" onClick={closeMobileMenu}>◌ <span>Conversas</span></Link>
+          <Link className={pathname.startsWith("/app/relatorios") ? "active" : ""} href="/app/relatorios" onClick={closeMobileMenu}>▤ <span>Relatórios</span></Link>
           <Link className={pathname.startsWith("/app/conteudo") ? "active" : ""} href="/app/conteudo" onClick={closeMobileMenu}>✎ <span>Conteúdo</span></Link>
           {canManage ? <Link className={pathname.startsWith("/app/criativos") ? "active" : ""} href="/app/criativos" onClick={closeMobileMenu}>◈ <span>Criativos</span></Link> : null}
         </nav>
