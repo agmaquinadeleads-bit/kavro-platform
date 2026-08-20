@@ -92,6 +92,11 @@ export async function sendWhatsappMessage(formData: FormData) {
   });
   if (!response.ok) redirect(`${backPath}&error=send_failed`);
 
+  // Sem redirect no caminho feliz: redirect() força uma navegação cheia,
+  // que só termina depois que /app/whatsapp inteiro reconsulta conexões,
+  // lista de conversas, histórico de mensagens e URLs assinadas de mídia —
+  // era esse ciclo (não o envio em si) o principal responsável pelo delay
+  // até "Enviando..." sumir. revalidatePath já basta pra atualizar a
+  // conversa/mensagem na tela, sem a navegação.
   revalidatePath("/app/whatsapp");
-  redirect(`${backPath}&success=message_sent`);
 }

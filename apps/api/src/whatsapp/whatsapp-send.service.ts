@@ -64,17 +64,21 @@ export class WhatsappSendService {
     });
     if (!message) throw new ServiceUnavailableException("Não foi possível registrar a mensagem");
 
-    await this.insertOne("whatsapp_outbox", { org_id: session.organizationId, message_id: message.id });
-
-    // A própria mensagem enviada também vira o "último preview" da
-    // conversa — sem isso a lista de conversas só reflete inbound.
+    // As duas escritas abaixo são independentes entre si (uma cria o item
+    // da fila, a outra só atualiza o preview da conversa) — rodar em
+    // paralelo em vez de sequencial economiza um round-trip inteiro pro
+    // Supabase. Isso importa aqui: quem está digitando vê "Enviando..."
+    // até essa função inteira responder.
     const preview = trimmedText || (input.media ? MEDIA_PREVIEW_LABELS[input.media.messageType] : "") || "";
-    await fetch(`${this.baseUrl()}/rest/v1/whatsapp_conversations?id=eq.${conversation.id}`, {
-      method: "PATCH",
-      headers: this.serviceHeaders(),
-      body: JSON.stringify({ last_message_preview: preview.slice(0, 500), last_message_at: new Date().toISOString() }),
-      signal: AbortSignal.timeout(12000)
-    });
+    await Promise.all([
+      this.insertOne("whatsapp_outbox", { org_id: session.organizationId, message_id: message.id }),
+      fetch(`${this.baseUrl()}/rest/v1/whatsapp_conversations?id=eq.${conversation.id}`, {
+        method: "PATCH",
+        headers: this.serviceHeaders(),
+        body: JSON.stringify({ last_message_preview: preview.slice(0, 500), last_message_at: new Date().toISOString() }),
+        signal: AbortSignal.timeout(12000)
+      })
+    ]);
 
     return { messageId: message.id, status: "pending" };
   }

@@ -32,6 +32,21 @@ export function ChatComposerInput() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [pickerOpen]);
 
+  // form.reset() (disparado pelo ChatComposerForm ao enviar) já limpa o
+  // valor nativo do <input type="file">, mas não o estado React local do
+  // chip de anexo — sem isso o chip continuava mostrando o arquivo antigo
+  // mesmo com o input já vazio.
+  useEffect(() => {
+    const form = textareaRef.current?.form;
+    if (!form) return;
+    const handleReset = () => {
+      setFileName(null);
+      setFileError("");
+    };
+    form.addEventListener("reset", handleReset);
+    return () => form.removeEventListener("reset", handleReset);
+  }, []);
+
   const insertEmoji = (emoji: string) => {
     const textarea = textareaRef.current;
     if (!textarea) return;

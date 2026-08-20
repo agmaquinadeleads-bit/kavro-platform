@@ -2,13 +2,14 @@ import Link from "next/link";
 import { getAuthContext } from "@/lib/auth-context";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ChatComposerInput } from "@/components/ChatComposerInput";
+import { ChatComposerForm } from "@/components/ChatComposerForm";
 import { ChatAutoRefresh } from "@/components/ChatAutoRefresh";
 import { MarkUnreadButton } from "@/components/MarkUnreadButton";
 import { InboxFilterForm } from "@/components/InboxFilterForm";
 import { ExportChatButton } from "@/components/ExportChatButton";
 import { sendWhatsappMessage } from "./actions";
 
-type WhatsappPageProps = { searchParams: Promise<{ conversation?: string; connection?: string; error?: string; success?: string; tab?: string; stage?: string; source?: string; q?: string }> };
+type WhatsappPageProps = { searchParams: Promise<{ conversation?: string; connection?: string; error?: string; tab?: string; stage?: string; source?: string; q?: string }> };
 
 const errorMessages: Record<string, string> = {
   invalid_message: "Escreva algo ou anexe um arquivo antes de enviar.",
@@ -16,10 +17,6 @@ const errorMessages: Record<string, string> = {
   media_too_large: "Arquivo maior que 15MB — escolha um menor.",
   media_upload_failed: "Não foi possível enviar o anexo. Tente novamente."
 };
-const successMessages: Record<string, string> = {
-  message_sent: "Mensagem enviada."
-};
-
 function messageTime(value: string) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value)); }
 
 const MEDIA_LABELS: Record<string, string> = {
@@ -139,8 +136,7 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
   const params = await searchParams;
   const { supabase, orgId, role } = await getAuthContext();
   const errorMessage = params.error ? errorMessages[params.error] : undefined;
-  const successMessage = params.success ? successMessages[params.success] : undefined;
-  const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : successMessage ? { kind: "success" as const, message: successMessage } : undefined;
+  const feedback = errorMessage ? { kind: "error" as const, message: errorMessage } : undefined;
 
   const { data: connections } = await supabase.from("whatsapp_connections").select("id, display_name, phone_number, status, is_default").eq("org_id", orgId).order("is_default", { ascending: false }).order("created_at");
   const selectedConnectionId = connections?.some((connection) => connection.id === params.connection) ? params.connection : connections?.[0]?.id;
@@ -284,7 +280,7 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
           </div>;
         })}</nav> : <div className="conversation-empty">{baseConversations.length ? "Nenhuma conversa encontrada com esses filtros." : "Nenhuma conversa recebida neste número."}</div>}
       </aside>
-      <section className="chat-panel">{selectedConversation ? <><header className="no-print"><div className="chat-avatar" style={avatarStyle(selectedConversation.contact_name || selectedConversation.remote_jid)}>{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div>{messages.length ? <ExportChatButton /> : null}</header><div className="chat-print-header"><p className="eyebrow">TRANSCRIÇÃO DE CONVERSA — KAVRO CRM</p><h2>{selectedConversation.contact_name || selectedConversation.remote_jid}</h2><p>{selectedConversation.remote_jid} · Atendente: {selectedConnection?.display_name ?? "—"} · {messages.length} {messages.length === 1 ? "mensagem" : "mensagens"} · Exportado em {messageTime(new Date().toISOString())}</p></div><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}>{message.direction === "outbound" && selectedConnection?.display_name ? <span className="sender-name">{selectedConnection.display_name}</span> : null}<MessageBody messageType={message.message_type} textContent={message.text_content} mediaUrl={message.media_object_key ? mediaUrls[message.media_object_key] : undefined} /><time>{messageTime(message.provider_timestamp || message.created_at)} · {statusLabel(message.status)}</time></article>) : <div className="chat-empty"><span className="chat-empty-icon">💬</span>A conversa ainda não possui mensagens.</div>}</div><form action={sendWhatsappMessage} className="chat-composer no-print"><input type="hidden" name="connection_id" value={selectedConnectionId} /><input type="hidden" name="conversation_id" value={selectedConversation.id} /><ChatComposerInput /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></form></> : <div className="chat-empty"><span className="chat-empty-icon">◌</span>Selecione uma conversa para começar.</div>}</section>
+      <section className="chat-panel">{selectedConversation ? <><header className="no-print"><div className="chat-avatar" style={avatarStyle(selectedConversation.contact_name || selectedConversation.remote_jid)}>{(selectedConversation.contact_name || selectedConversation.remote_jid)[0]?.toUpperCase()}</div><div><strong>{selectedConversation.contact_name || selectedConversation.remote_jid}</strong><small>{selectedConversation.remote_jid}</small></div>{messages.length ? <ExportChatButton /> : null}</header><div className="chat-print-header"><p className="eyebrow">TRANSCRIÇÃO DE CONVERSA — KAVRO CRM</p><h2>{selectedConversation.contact_name || selectedConversation.remote_jid}</h2><p>{selectedConversation.remote_jid} · Atendente: {selectedConnection?.display_name ?? "—"} · {messages.length} {messages.length === 1 ? "mensagem" : "mensagens"} · Exportado em {messageTime(new Date().toISOString())}</p></div><div className="message-stream">{messages.length ? messages.map((message) => <article className={`message-bubble ${message.direction}`} key={message.id}>{message.direction === "outbound" && selectedConnection?.display_name ? <span className="sender-name">{selectedConnection.display_name}</span> : null}<MessageBody messageType={message.message_type} textContent={message.text_content} mediaUrl={message.media_object_key ? mediaUrls[message.media_object_key] : undefined} /><time>{messageTime(message.provider_timestamp || message.created_at)} · {statusLabel(message.status)}</time></article>) : <div className="chat-empty"><span className="chat-empty-icon">💬</span>A conversa ainda não possui mensagens.</div>}</div><ChatComposerForm action={sendWhatsappMessage} connectionId={selectedConnectionId} conversationId={selectedConversation.id}><ChatComposerInput /><SubmitButton label="Enviar" pendingLabel="Enviando..." /></ChatComposerForm></> : <div className="chat-empty"><span className="chat-empty-icon">◌</span>Selecione uma conversa para começar.</div>}</section>
     </section>}
   </main>;
 }
