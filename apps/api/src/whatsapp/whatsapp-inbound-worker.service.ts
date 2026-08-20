@@ -195,20 +195,40 @@ export class WhatsappInboundWorkerService {
     const normalized = normalize(connection.provider, item.payload);
     if (!normalized) throw new Error("Payload sem identificador de conversa reconhecível");
 
+    // fromMe=true cobre dois casos que a Baileys não distingue entre si:
+    // eco de uma mensagem que o próprio Kavro mandou (o worker de envio já
+    // gravou essa linha, com esse external_id, ANTES desse evento chegar
+    // aqui) ou uma mensagem mandada do celular do vendedor por fora do
+    // Kavro (a sessão espelha TUDO da conta, não só o que passa pelo
+    // CRM). O CRM só deve refletir o que o LEAD manda — pedido explícito
+    // do usuário: mensagem enviada fora do Kavro não pode criar nem
+    // atualizar conversa nenhuma. A única forma de diferenciar os dois
+    // casos é checar se já existe uma linha com esse external_id (só
+    // existe se foi o Kavro que mandou) — se não existe, é mensagem de
+    // fora, e o evento é descartado aqui, antes até de tocar em
+    // whatsapp_conversations (senão um contato novo que só recebeu
+    // mensagem "de fora" ganhava uma conversa fantasma na caixa).
+    if (normalized.fromMe) {
+      const ownMessage = await this.selectOne<{ id: string }>(
+        "whatsapp_messages",
+        `org_id=eq.${item.orgId}&connection_id=eq.${item.connectionId}&external_id=eq.${item.providerEventId}&select=id`
+      );
+      if (!ownMessage) {
+        this.logger.debug(`Mensagem outbound enviada fora do Kavro ignorada: connection=${item.connectionId}`);
+      }
+      return;
+    }
+
     const conversation = await this.findOrCreateConversation(item.orgId, item.connectionId, normalized);
 
-    // fromMe=true: mensagem enviada do próprio celular (fora do Kavro) ou
-    // eco de uma mensagem já enviada pelo Kavro (nesse caso o conflito de
-    // external_id abaixo evita duplicar — a linha já existe, criada na
-    // hora do envio).
     const insertedMessage = await this.insert("whatsapp_messages", {
       org_id: item.orgId,
       connection_id: item.connectionId,
       conversation_id: conversation.id,
       external_id: item.providerEventId,
-      direction: normalized.fromMe ? "outbound" : "inbound",
+      direction: "inbound",
       message_type: normalized.messageType,
-      status: normalized.fromMe ? "sent" : "received",
+      status: "received",
       sender_jid: normalized.remoteJid,
       text_content: normalized.textContent,
       provider_timestamp: normalized.providerTimestamp,
@@ -216,45 +236,39 @@ export class WhatsappInboundWorkerService {
       media_mime_type: normalized.mediaMimeType
     });
     // Conflito de external_id = esse evento já virou mensagem antes
-    // (reprocessamento, ou eco de um envio feito pelo Kavro) — não é erro,
-    // só evita repetir o efeito colateral de atualizar a conversa de novo.
+    // (reprocessamento) — não é erro, só evita repetir o efeito colateral
+    // de atualizar a conversa de novo.
     if (insertedMessage.conflict) return;
-    this.logger.debug(`Mensagem ${normalized.fromMe ? "outbound" : "inbound"} gravada: conversation=${conversation.id} type=${normalized.messageType}`);
+    this.logger.debug(`Mensagem inbound gravada: conversation=${conversation.id} type=${normalized.messageType}`);
 
     // Cria o lead automaticamente na primeira mensagem de verdade recebida
-    // de um contato novo — pedido do usuário. Chama em toda mensagem
-    // realmente recebida (não eco de envio nosso), mesmo quando a
-    // conversa já tem lead_id: create_lead_from_whatsapp() é quem decide
-    // se cria (lead ainda não existe, ou o vinculado foi arquivado — sem
-    // isso, excluir o lead e o contato mandar mensagem de novo nunca
-    // gerava um lead novo) ou só devolve o id de um lead ainda ativo, sem
-    // duplicar. A trava (FOR UPDATE) na linha da conversa, dentro da RPC,
-    // evita corrida entre duas mensagens quase simultâneas do mesmo
-    // contato.
-    if (!normalized.fromMe) {
-      try {
-        await this.rpc("create_lead_from_whatsapp", {
-          p_org_id: item.orgId,
-          p_conversation_id: conversation.id,
-          p_created_by: connection.created_by,
-          p_name: normalized.contactName || normalized.remoteJid.split("@")[0] || "Contato do WhatsApp",
-          p_phone: normalized.remoteJid.split("@")[0] ?? normalized.remoteJid,
-          // Se bater com a mensagem inicial de um criativo cadastrado
-          // (packages/database/migrations/0035_ad_creatives.sql), o lead
-          // já nasce com esse criativo como origem.
-          p_message_text: normalized.textContent
-        });
-      } catch (error) {
-        this.logger.error(`Falha ao criar lead automático (conversation=${conversation.id}): ${(error as Error).message}`);
-      }
+    // de um contato novo — pedido do usuário. create_lead_from_whatsapp()
+    // decide se cria (lead ainda não existe, ou o vinculado foi
+    // arquivado — sem isso, excluir o lead e o contato mandar mensagem de
+    // novo nunca gerava um lead novo) ou só devolve o id de um lead ainda
+    // ativo, sem duplicar. A trava (FOR UPDATE) na linha da conversa,
+    // dentro da RPC, evita corrida entre duas mensagens quase simultâneas
+    // do mesmo contato.
+    try {
+      await this.rpc("create_lead_from_whatsapp", {
+        p_org_id: item.orgId,
+        p_conversation_id: conversation.id,
+        p_created_by: connection.created_by,
+        p_name: normalized.contactName || normalized.remoteJid.split("@")[0] || "Contato do WhatsApp",
+        p_phone: normalized.remoteJid.split("@")[0] ?? normalized.remoteJid,
+        // Se bater com a mensagem inicial de um criativo cadastrado
+        // (packages/database/migrations/0035_ad_creatives.sql), o lead
+        // já nasce com esse criativo como origem.
+        p_message_text: normalized.textContent
+      });
+    } catch (error) {
+      this.logger.error(`Falha ao criar lead automático (conversation=${conversation.id}): ${(error as Error).message}`);
     }
 
     await this.patch("whatsapp_conversations", `id=eq.${conversation.id}`, {
       last_message_preview: (normalized.textContent ?? `[${normalized.messageType}]`).slice(0, 500),
       last_message_at: normalized.providerTimestamp ?? new Date().toISOString(),
-      // Mensagem enviada (por nós ou pelo próprio celular) não conta como
-      // "não lida" — isso é só pra mensagem nova vinda do contato.
-      ...(normalized.fromMe ? {} : { unread_count: conversation.unread_count + 1 }),
+      unread_count: conversation.unread_count + 1,
       ...(normalized.contactName ? { contact_name: normalized.contactName } : {})
     });
   }
