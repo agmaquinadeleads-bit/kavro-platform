@@ -271,7 +271,10 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
               {conversation.last_message_at ? <time>{messageTime(conversation.last_message_at)}</time> : null}
               {conversation.unread_count > 0 ? <b>{conversation.unread_count}</b> : null}
             </Link>
-            <MarkUnreadButton conversationId={conversation.id} />
+            {/* Só faz sentido "marcar como não lida" numa conversa que já
+                está lida — numa que já tem o badge verde, seria redundante
+                (e foi exatamente essa combinação que ficou poluída). */}
+            {conversation.unread_count === 0 ? <MarkUnreadButton conversationId={conversation.id} /> : null}
           </div>;
         })}</nav> : <div className="conversation-empty">{baseConversations.length ? "Nenhuma conversa encontrada com esses filtros." : "Nenhuma conversa recebida neste número."}</div>}
       </aside>
