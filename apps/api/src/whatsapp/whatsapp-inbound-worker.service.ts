@@ -200,22 +200,53 @@ export class WhatsappInboundWorkerService {
     // gravou essa linha, com esse external_id, ANTES desse evento chegar
     // aqui) ou uma mensagem mandada do celular do vendedor por fora do
     // Kavro (a sessão espelha TUDO da conta, não só o que passa pelo
-    // CRM). O CRM só deve refletir o que o LEAD manda — pedido explícito
-    // do usuário: mensagem enviada fora do Kavro não pode criar nem
-    // atualizar conversa nenhuma. A única forma de diferenciar os dois
-    // casos é checar se já existe uma linha com esse external_id (só
-    // existe se foi o Kavro que mandou) — se não existe, é mensagem de
-    // fora, e o evento é descartado aqui, antes até de tocar em
-    // whatsapp_conversations (senão um contato novo que só recebeu
-    // mensagem "de fora" ganhava uma conversa fantasma na caixa).
+    // CRM). A regra não é "nunca aparece" — é "não pode CRIAR uma
+    // conversa nova a partir de uma mensagem de fora" (isso que gerava
+    // conversa fantasma pra contato pessoal, sem relação com lead
+    // nenhum). Se a conversa JÁ EXISTE (contato que já está sendo
+    // acompanhado no CRM), a resposta mandada do celular deve continuar
+    // aparecendo ali — foi exatamente esse caso que quebrou antes.
     if (normalized.fromMe) {
       const ownMessage = await this.selectOne<{ id: string }>(
         "whatsapp_messages",
         `org_id=eq.${item.orgId}&connection_id=eq.${item.connectionId}&external_id=eq.${item.providerEventId}&select=id`
       );
-      if (!ownMessage) {
-        this.logger.debug(`Mensagem outbound enviada fora do Kavro ignorada: connection=${item.connectionId}`);
+      if (ownMessage) return; // eco de envio já feito pelo Kavro — nada a fazer, a linha já existe.
+
+      const existingConversation = await this.selectOne<ConversationRow>(
+        "whatsapp_conversations",
+        `org_id=eq.${item.orgId}&connection_id=eq.${item.connectionId}&remote_jid=eq.${encodeURIComponent(normalized.remoteJid)}&select=id,unread_count,lead_id`
+      );
+      if (!existingConversation) {
+        // Sem conversa existente e sem ter passado pelo Kavro — contato
+        // pessoal/fora do CRM, não cria conversa fantasma.
+        this.logger.debug(`Mensagem outbound enviada fora do Kavro ignorada (conversa inexistente): connection=${item.connectionId}`);
+        return;
       }
+
+      const ownOutboundInsert = await this.insert("whatsapp_messages", {
+        org_id: item.orgId,
+        connection_id: item.connectionId,
+        conversation_id: existingConversation.id,
+        external_id: item.providerEventId,
+        direction: "outbound",
+        message_type: normalized.messageType,
+        status: "sent",
+        sender_jid: normalized.remoteJid,
+        text_content: normalized.textContent,
+        provider_timestamp: normalized.providerTimestamp,
+        media_object_key: normalized.mediaObjectKey,
+        media_mime_type: normalized.mediaMimeType
+      });
+      if (ownOutboundInsert.conflict) return;
+
+      // Não conta como não lida (o vendedor mandou, não o lead) e não
+      // chama create_lead_from_whatsapp — a conversa já existe, não tem
+      // lead novo pra criar aqui.
+      await this.patch("whatsapp_conversations", `id=eq.${existingConversation.id}`, {
+        last_message_preview: (normalized.textContent ?? `[${normalized.messageType}]`).slice(0, 500),
+        last_message_at: normalized.providerTimestamp ?? new Date().toISOString()
+      });
       return;
     }
 
