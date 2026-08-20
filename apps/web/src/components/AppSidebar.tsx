@@ -77,7 +77,7 @@ export function AppSidebar({ userName, organizationName, canManage }: AppSidebar
           {canManage ? <Link className={pathname.startsWith("/app/criativos") ? "active" : ""} href="/app/criativos" onClick={closeMobileMenu}>◈ <span>Criativos</span></Link> : null}
         </nav>
         <div className="sidebar-footer">
-          {canManage ? <Link className={isActive("/app/team") ? "active" : ""} href="/app/team" onClick={closeMobileMenu}>♙ <span>Equipe</span></Link> : null}
+          {canManage ? <Link className={isActive("/app/configuracoes") ? "active" : ""} href="/app/configuracoes" onClick={closeMobileMenu}>⚙ <span>Configurações</span></Link> : null}
           <div className="profile"><span>{initials(userName)}</span>{!collapsed ? <div><strong>{userName}</strong><small>{organizationName}</small></div> : null}</div>
           <form action={logout}><button className="logout-button" type="submit">{collapsed ? "⏻" : "Sair da conta"}</button></form>
         </div>

@@ -7,6 +7,10 @@ import { z } from "zod";
 import { getAuthContext } from "@/lib/auth-context";
 
 const BASE_PATH = "/app/criativos";
+// Origens de lead foi movido pra dentro de Configurações (o gerenciamento
+// de criativos continua aqui) — createLeadSource/deleteLeadSource abaixo
+// usam esse path próprio em vez de BASE_PATH.
+const SOURCES_PATH = "/app/configuracoes";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -24,31 +28,34 @@ const createSourceSchema = z.object({ name: z.string().trim().min(1).max(60) });
 
 export async function createLeadSource(formData: FormData) {
   const input = createSourceSchema.safeParse({ name: formData.get("name") });
-  if (!input.success) redirect(`${BASE_PATH}?error=invalid_source`);
+  if (!input.success) redirect(`${SOURCES_PATH}?error=invalid_source`);
 
   const { supabase, orgId } = await requireManager();
   const { error } = await supabase.from("lead_sources").insert({ org_id: orgId, name: input.data.name });
   // Índice único (org_id, lower(name)) — 23505 é "já existe uma origem com esse nome".
-  if (error) redirect(`${BASE_PATH}?error=${error.code === "23505" ? "source_duplicate" : "source_create_failed"}`);
+  if (error) redirect(`${SOURCES_PATH}?error=${error.code === "23505" ? "source_duplicate" : "source_create_failed"}`);
 
+  // Origens também alimentam o <select> de criativos — revalida os dois.
+  revalidatePath(SOURCES_PATH);
   revalidatePath(BASE_PATH);
-  redirect(`${BASE_PATH}?success=source_created`);
+  redirect(`${SOURCES_PATH}?success=source_created`);
 }
 
 const deleteSourceSchema = z.object({ sourceId: z.string().uuid() });
 
 export async function deleteLeadSource(formData: FormData) {
   const input = deleteSourceSchema.safeParse({ sourceId: formData.get("source_id") });
-  if (!input.success) redirect(`${BASE_PATH}?error=invalid_source`);
+  if (!input.success) redirect(`${SOURCES_PATH}?error=invalid_source`);
 
   const { supabase, orgId } = await requireManager();
   // Criativos que usavam essa origem ficam sem origem (on delete set null
   // na FK) — não bloqueia a exclusão.
   const { error } = await supabase.from("lead_sources").delete().eq("id", input.data.sourceId).eq("org_id", orgId);
-  if (error) redirect(`${BASE_PATH}?error=source_delete_failed`);
+  if (error) redirect(`${SOURCES_PATH}?error=source_delete_failed`);
 
+  revalidatePath(SOURCES_PATH);
   revalidatePath(BASE_PATH);
-  redirect(`${BASE_PATH}?success=source_deleted`);
+  redirect(`${SOURCES_PATH}?success=source_deleted`);
 }
 
 const creativeSchema = z.object({

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
-import { createAdCreative, createLeadSource, deleteAdCreative, deleteLeadSource, updateAdCreative } from "./actions";
+import { createAdCreative, deleteAdCreative, updateAdCreative } from "./actions";
 
 type CriativosPageProps = {
   searchParams: Promise<{ error?: string; success?: string; edit?: string }>;
@@ -9,10 +9,6 @@ type CriativosPageProps = {
 
 const errorMessages: Record<string, string> = {
   forbidden: "Seu perfil não pode fazer essa ação.",
-  invalid_source: "Informe um nome de origem válido.",
-  source_duplicate: "Já existe uma origem com esse nome.",
-  source_create_failed: "Não foi possível criar a origem.",
-  source_delete_failed: "Não foi possível remover a origem.",
   invalid_creative: "Revise os dados do criativo.",
   creative_duplicate_message: "Já existe um criativo com essa mensagem inicial.",
   creative_create_failed: "Não foi possível criar o criativo.",
@@ -23,8 +19,6 @@ const errorMessages: Record<string, string> = {
   image_upload_failed: "Não foi possível enviar a imagem."
 };
 const successMessages: Record<string, string> = {
-  source_created: "Origem criada.",
-  source_deleted: "Origem removida.",
   creative_created: "Criativo cadastrado.",
   creative_updated: "Criativo atualizado.",
   creative_deleted: "Criativo removido."
@@ -83,6 +77,7 @@ export default async function CriativosPage({ searchParams }: CriativosPageProps
                   <option value="">Sem origem</option>
                   {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
                 </select>
+                <small>Gerencie as origens em <Link href="/app/configuracoes">Configurações</Link>.</small>
               </label>
             </div>
             <label>
@@ -138,27 +133,6 @@ export default async function CriativosPage({ searchParams }: CriativosPageProps
             ))}
           </div>
         )}
-
-        <section className="source-manager">
-          <h2>Origens de lead</h2>
-          <p>De onde vêm seus leads</p>
-          <div className="tag-pills">
-            {sources.map((source) => (
-              <span key={source.id} className="tag-pill source-pill">
-                {source.name}
-                <form action={deleteLeadSource} style={{ display: "contents" }}>
-                  <input type="hidden" name="source_id" value={source.id} />
-                  <button type="submit" className="tag-pill-remove" aria-label={`Remover origem ${source.name}`}>×</button>
-                </form>
-              </span>
-            ))}
-            {sources.length === 0 ? <span className="tag-empty">Nenhuma origem cadastrada</span> : null}
-          </div>
-          <form action={createLeadSource} className="tag-add-form">
-            <input type="text" name="name" placeholder="Nova origem" maxLength={60} required />
-            <button type="submit">Adicionar</button>
-          </form>
-        </section>
       </div>
     </>
   );

@@ -370,3 +370,26 @@ button { cursor:pointer; }
   .message-bubble { break-inside:avoid; box-shadow:none; border:1px solid #e2e8f0; }
   .message-bubble.outbound { border-color:#bfe6cf; }
 }
+
+/* Configurações */
+.settings-blocks { display:grid; gap:10px; margin-top:18px; }
+.settings-block { border:1px solid var(--line); border-radius:13px; background:var(--surface); overflow:hidden; }
+.settings-block summary { list-style:none; cursor:pointer; padding:16px 18px; display:flex; align-items:center; gap:14px; }
+.settings-block summary::-webkit-details-marker { display:none; }
+.settings-block summary::marker { content:""; }
+.settings-block-summary-static { padding:16px 18px; display:flex; align-items:center; gap:14px; }
+.settings-block-icon { flex-shrink:0; width:40px; height:40px; border-radius:11px; display:grid; place-items:center; font-size:18px; }
+.settings-block-text { flex:1; min-width:0; display:grid; gap:2px; }
+.settings-block-text strong { font-size:13px; color:var(--ink); }
+.settings-block-text small { color:var(--muted); font-size:11px; }
+.settings-block-badge { flex-shrink:0; padding:4px 10px; border-radius:20px; font-size:10px; font-weight:750; background:#eef2ef; color:#586a60; white-space:nowrap; }
+.settings-block-badge.positive { background:#dcf4e7; color:#167246; }
+.settings-block-badge.muted { background:#f1f3f5; color:#8a95a3; }
+.settings-block-chevron { flex-shrink:0; color:var(--muted); font-size:11px; transition:transform .15s ease; }
+.settings-block[open] .settings-block-chevron { transform:rotate(180deg); }
+.settings-block-body { padding:16px 18px 18px; border-top:1px solid var(--line); display:grid; gap:14px; }
+.settings-block-empty { margin:0; color:var(--muted); font-size:11px; }
+.settings-block-disabled { opacity:.6; }
+.settings-block-disabled .settings-block-icon { filter:grayscale(.4); }
+.settings-section-title { margin:28px 0 14px; font-size:16px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+@media (max-width:640px) { .settings-block summary, .settings-block-summary-static { flex-wrap:wrap; } }
