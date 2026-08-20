@@ -14,7 +14,20 @@ export default async function RelatoriosPage({ searchParams }: RelatoriosPagePro
 
   const { supabase, orgId } = await getAuthContext();
 
-  type PipelineRow = { id: string; name: string; position: number; is_post_sale: boolean };
+  // Relatórios reflete só o pipeline comercial de verdade — a mesma
+  // convenção já usada em create_lead_from_whatsapp/ad_creatives (não
+  // pós-venda, não protegido) exclui os pipelines "de sistema" (Pós-venda,
+  // Parceiros e fornecedores), que não são leads comerciais. Buscado antes
+  // do resto porque o funil e o filtro de motivos de perda dependem dele.
+  const { data: commercialPipeline } = await supabase
+    .from("pipelines")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("is_post_sale", false)
+    .eq("is_protected", false)
+    .limit(1)
+    .maybeSingle();
+
   type MemberRow = { user_id: string; user_profiles: { full_name: string | null; email: string | null } | Array<{ full_name: string | null; email: string | null }> | null };
   type SummaryRow = { total_count: number; won_count: number; lost_count: number; revenue_won_cents: number; avg_ticket_cents: number; avg_closing_days: number | null };
   type EvolutionRow = { week_start: string; lead_count: number; won_count: number };
@@ -23,10 +36,6 @@ export default async function RelatoriosPage({ searchParams }: RelatoriosPagePro
   type FunnelRow = { stage_id: string; stage_name: string; stage_position: number; is_won: boolean; is_lost: boolean; lead_count: number; total_value_in_cents: number };
   type LossRow = { loss_reason: string | null };
   type HourRow = { hour_of_day: number; lead_count: number };
-
-  const pipelinesPromise: Promise<{ data: PipelineRow[] | null }> = Promise.resolve(
-    supabase.from("pipelines").select("id, name, position, is_post_sale").eq("org_id", orgId).order("is_post_sale", { ascending: true }).order("position", { ascending: true })
-  );
 
   const membersPromise: Promise<{ data: MemberRow[] | null }> = Promise.resolve(
     supabase.from("organization_members").select("user_id, user_profiles(full_name, email)").eq("org_id", orgId).order("created_at", { ascending: true })
@@ -56,15 +65,23 @@ export default async function RelatoriosPage({ searchParams }: RelatoriosPagePro
     supabase.rpc("get_report_leads_by_hour", { p_org_id: orgId, p_date_from: dateFrom, p_date_to: dateTo, p_owner_id: owner, p_source: source })
   );
 
+  // Sem pipeline comercial (não deveria acontecer — toda org tem um, ver
+  // create_organization em 0021_pipeline_delete_protection.sql) não tem
+  // como escopar funil/motivos de perda com segurança, então ficam vazios
+  // em vez de vazar leads de pipelines de sistema.
+  const funnelPromise: Promise<{ data: FunnelRow[] | null }> = commercialPipeline
+    ? Promise.resolve(supabase.rpc("get_dashboard_stage_funnel", { p_org_id: orgId, p_pipeline_id: commercialPipeline.id, p_date_from: dateFrom, p_date_to: dateTo }))
+    : Promise.resolve({ data: [] });
+
   let lossQuery = supabase.from("leads").select("loss_reason").eq("org_id", orgId).eq("status", "lost").is("deleted_at", null);
+  if (commercialPipeline) lossQuery = lossQuery.eq("pipeline_id", commercialPipeline.id);
   if (dateFrom) lossQuery = lossQuery.gte("created_at", `${dateFrom}T00:00:00Z`);
   if (dateTo) lossQuery = lossQuery.lte("created_at", `${dateTo}T23:59:59Z`);
   if (owner) lossQuery = lossQuery.eq("owner_id", owner);
   if (source) lossQuery = lossQuery.eq("source", source);
-  const lossPromise: Promise<{ data: LossRow[] | null }> = Promise.resolve(lossQuery);
+  const lossPromise: Promise<{ data: LossRow[] | null }> = commercialPipeline ? Promise.resolve(lossQuery) : Promise.resolve({ data: [] });
 
   const [
-    { data: pipelineRows },
     { data: memberRows },
     { data: summaryRows },
     { data: evolutionRows },
@@ -72,27 +89,19 @@ export default async function RelatoriosPage({ searchParams }: RelatoriosPagePro
     { data: ownerAggRows },
     { data: responseTimeMinutes },
     { data: lossRows },
-    { data: hourRows }
-  ] = await Promise.all([pipelinesPromise, membersPromise, summaryPromise, evolutionPromise, sourcePromise, ownerAggPromise, responseTimePromise, lossPromise, hourPromise]);
+    { data: hourRows },
+    { data: funnelRows }
+  ] = await Promise.all([membersPromise, summaryPromise, evolutionPromise, sourcePromise, ownerAggPromise, responseTimePromise, lossPromise, hourPromise, funnelPromise]);
 
-  // O funil cruza TODOS os pipelines da org (comercial + pós-venda), não só
-  // o primeiro (diferente da Visão geral) — cada pipeline entra com uma
-  // chamada separada à mesma função do dashboard, concatenadas na ordem
-  // já retornada por pipelinesPromise (comercial antes de pós-venda).
-  const funnelResults = await Promise.all(
-    (pipelineRows ?? []).map((pipeline) => supabase.rpc("get_dashboard_stage_funnel", { p_org_id: orgId, p_pipeline_id: pipeline.id, p_date_from: dateFrom, p_date_to: dateTo }))
-  );
-  const funnelData: ReportFunnelStage[] = funnelResults.flatMap((result) =>
-    ((result.data as FunnelRow[] | null) ?? []).map((row) => ({
-      stageId: row.stage_id,
-      stageName: row.stage_name,
-      position: row.stage_position,
-      isWon: row.is_won,
-      isLost: row.is_lost,
-      leadCount: Number(row.lead_count),
-      totalValueInCents: Number(row.total_value_in_cents)
-    }))
-  );
+  const funnelData: ReportFunnelStage[] = ((funnelRows as FunnelRow[] | null) ?? []).map((row) => ({
+    stageId: row.stage_id,
+    stageName: row.stage_name,
+    position: row.stage_position,
+    isWon: row.is_won,
+    isLost: row.is_lost,
+    leadCount: Number(row.lead_count),
+    totalValueInCents: Number(row.total_value_in_cents)
+  }));
 
   const members = (memberRows ?? []).map((member) => {
     const profile = Array.isArray(member.user_profiles) ? member.user_profiles[0] : member.user_profiles;

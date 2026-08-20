@@ -149,7 +149,7 @@ export function Report({ feedback, dateFrom, dateTo, owner, source, members, ori
       <ReportChartsLoader evolutionData={evolutionData} sourceData={sourceData} stageValueData={stageValueData} lossReasonData={lossReasonData} hourData={hourData} />
 
       <section className="funnel-section" aria-labelledby="report-funnel-title">
-        <h3 id="report-funnel-title">Funil de conversão (todos os pipelines)</h3>
+        <h3 id="report-funnel-title">Funil de conversão</h3>
         {funnelTotal > 0 ? (
           <div className="funnel-list">
             {funnelRows.map(({ stage, percentOfTotal, conversionRateFromPrevious }) => (
