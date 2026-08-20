@@ -207,7 +207,12 @@ export default async function WhatsappPage({ searchParams }: WhatsappPageProps) 
     return `/app/whatsapp${qs ? `?${qs}` : ""}`;
   }
 
-  const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation) ?? conversations[0];
+  // Sem fallback pra conversations[0]: abrir /app/whatsapp direto não pode
+  // expor a última conversa sozinho — só entra numa conversa quando o
+  // usuário clica nela (?conversation= explícito na URL). Pedido do
+  // usuário: evita digitar/mandar mensagem sem querer pra alguém errado e
+  // evita expor uma conversa em andamento na tela ao abrir a aba.
+  const selectedConversation = conversations.find((conversation) => conversation.id === params.conversation);
   if (selectedConversation && selectedConversation.unread_count > 0) {
     // Abrir a conversa marca como lida — sem isso o badge de não lidas
     // fica preso pra sempre (0032_whatsapp_mark_conversation_read.sql
