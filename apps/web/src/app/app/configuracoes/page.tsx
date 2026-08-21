@@ -15,6 +15,7 @@ const errorMessages: Record<string, string> = {
   role_change_failed: "Não foi possível alterar o perfil.",
   invalid_removal: "Seleção de usuário inválida.",
   member_removal_failed: "Não foi possível remover o usuário.",
+  seat_limit_reached: "Limite de vendedores do seu plano atingido — fale com o suporte para adicionar mais.",
   invalid_source: "Informe um nome de origem válido.",
   source_duplicate: "Já existe uma origem com esse nome.",
   source_create_failed: "Não foi possível criar a origem.",
@@ -35,18 +36,37 @@ export default async function ConfiguracoesPage({ searchParams }: ConfiguracoesP
   if (role === "member") redirect("/app?error=forbidden");
 
   type ConnectionRow = { id: string; display_name: string; phone_number: string | null; provider: "evolution" | "whatsapp_cloud"; status: string };
+  type BillingRow = {
+    subscription_status: string;
+    base_plan_price_id: string | null;
+    effective_seats_limit: number | null;
+    effective_leads_limit: number | null;
+    effective_whatsapp_numbers_limit: number | null;
+  };
 
-  const [{ data: organization }, { data: members }, { data: invitations }, { data: sources }, { data: connections }] = await Promise.all([
+  const [{ data: organization }, { data: members }, { data: invitations }, { data: sources }, { data: connections }, { data: billing }, { count: leadsCount }] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", orgId).single(),
     supabase.from("organization_members").select("user_id, role, created_at, user_profiles(full_name, email)").eq("org_id", orgId).order("created_at"),
     supabase.from("organization_invitations").select("id, email, role, expires_at, created_at").eq("org_id", orgId).is("accepted_at", null).is("cancelled_at", null).order("created_at", { ascending: false }),
     supabase.from("lead_sources").select("id, name").eq("org_id", orgId).order("name"),
-    supabase.from("whatsapp_connections").select("id, display_name, phone_number, provider, status").eq("org_id", orgId).order("created_at")
+    supabase.from("whatsapp_connections").select("id, display_name, phone_number, provider, status").eq("org_id", orgId).order("created_at"),
+    supabase.from("organization_billing").select("subscription_status, base_plan_price_id, effective_seats_limit, effective_leads_limit, effective_whatsapp_numbers_limit").eq("org_id", orgId).maybeSingle(),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null)
   ]);
 
   const sourceRows = sources ?? [];
   const connectionRows: ConnectionRow[] = connections ?? [];
   const memberRows = members ?? [];
+  const billingRow = billing as BillingRow | null;
+
+  let planLabel = "Sem plano vinculado";
+  if (billingRow?.base_plan_price_id) {
+    const { data: planCatalog } = await supabase.from("billing_plan_catalog").select("plan_label, plan_code").eq("stripe_price_id", billingRow.base_plan_price_id).maybeSingle();
+    planLabel = planCatalog?.plan_label || (planCatalog?.plan_code ? planCatalog.plan_code[0].toUpperCase() + planCatalog.plan_code.slice(1) : "Plano ativo");
+  }
+  const seatsLimit = billingRow?.effective_seats_limit ?? null;
+  const leadsLimit = billingRow?.effective_leads_limit ?? null;
+  const whatsappNumbersLimit = billingRow?.effective_whatsapp_numbers_limit ?? null;
 
   const errorMessage = params.error ? errorMessages[params.error] : undefined;
   const successMessage = params.success ? successMessages[params.success] : undefined;
@@ -117,13 +137,22 @@ export default async function ConfiguracoesPage({ searchParams }: ConfiguracoesP
             </div>
           </details>
 
-          <div className="settings-block settings-block-disabled">
-            <div className="settings-block-summary-static">
+          <details className="settings-block">
+            <summary>
               <span className="settings-block-icon" style={{ background: "#f3e8ff", color: "#7c3aed" }}>💳</span>
-              <span className="settings-block-text"><strong>Planos e cobrança</strong><small>Veja o plano atual e o status da assinatura</small></span>
-              <span className="settings-block-badge muted">Em breve</span>
+              <span className="settings-block-text"><strong>Planos e cobrança</strong><small>Plano atual e uso do seu plano</small></span>
+              <span className={`settings-block-badge ${billingRow?.base_plan_price_id ? "positive" : ""}`}>{planLabel}</span>
+              <span className="settings-block-chevron" aria-hidden="true">▾</span>
+            </summary>
+            <div className="settings-block-body">
+              <div className="billing-usage-list">
+                <div className="billing-usage-row"><span>Vendedores</span><strong>{memberRows.length}{seatsLimit !== null ? ` / ${seatsLimit}` : ""}</strong></div>
+                <div className="billing-usage-row"><span>Números de WhatsApp</span><strong>{connectionRows.length}{whatsappNumbersLimit !== null ? ` / ${whatsappNumbersLimit}` : ""}</strong></div>
+                <div className="billing-usage-row"><span>Leads</span><strong>{leadsCount ?? 0}{leadsLimit !== null ? ` / ${leadsLimit}` : ""}</strong></div>
+              </div>
+              {!billingRow?.base_plan_price_id ? <p className="settings-block-empty">Sua conta ainda não está vinculada a uma assinatura — sem limite aplicado por enquanto.</p> : null}
             </div>
-          </div>
+          </details>
 
           <div className="settings-block settings-block-disabled">
             <div className="settings-block-summary-static">

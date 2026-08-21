@@ -35,6 +35,13 @@ export class MetaOnboardingService {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!baseUrl || !serviceKey) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
 
+    // Checagem "de UX" antes de trocar o code OAuth (uso único) com a
+    // Meta — a trava de verdade fica dentro de
+    // complete_meta_whatsapp_connection (0042_billing_enforcement.sql).
+    // Limite nulo (org sem organization_billing, ou nunca vinculada ao
+    // Stripe) = sem limite.
+    await this.assertWhatsappNumberLimitNotReached(baseUrl, serviceKey, session.organizationId);
+
     const tokenResponse = await fetch(`https://graph.facebook.com/${graphVersion}/oauth/access_token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -85,5 +92,28 @@ export class MetaOnboardingService {
     if (!stored.ok) throw new ServiceUnavailableException("Não foi possível guardar a conexão com segurança");
     const connectionId = await stored.json() as string;
     return { status: "connected", connectionId, displayName: phone.verified_name, phoneNumber: phone.display_phone_number };
+  }
+
+  private async assertWhatsappNumberLimitNotReached(baseUrl: string, serviceKey: string, orgId: string): Promise<void> {
+    const headers = { apikey: serviceKey, authorization: `Bearer ${serviceKey}`, "content-type": "application/json" };
+    const billingResponse = await fetch(
+      `${baseUrl}/rest/v1/organization_billing?org_id=eq.${encodeURIComponent(orgId)}&select=effective_whatsapp_numbers_limit&limit=1`,
+      { headers, signal: AbortSignal.timeout(8000) }
+    );
+    if (!billingResponse.ok) return; // sem dado de billing, não bloqueia
+    const billingRows = await billingResponse.json() as Array<{ effective_whatsapp_numbers_limit: number | null }>;
+    const limit = billingRows[0]?.effective_whatsapp_numbers_limit;
+    if (limit === null || limit === undefined) return;
+
+    const countResponse = await fetch(
+      `${baseUrl}/rest/v1/whatsapp_connections?org_id=eq.${encodeURIComponent(orgId)}&select=id`,
+      { headers: { ...headers, Prefer: "count=exact" }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!countResponse.ok) return;
+    const contentRange = countResponse.headers.get("content-range");
+    const currentCount = contentRange ? Number(contentRange.split("/")[1]) : 0;
+    if (Number.isFinite(currentCount) && currentCount >= limit) {
+      throw new BadRequestException("Limite de números de WhatsApp do seu plano atingido — adicione mais em Configurações › Planos e cobrança");
+    }
   }
 }

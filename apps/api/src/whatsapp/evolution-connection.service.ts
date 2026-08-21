@@ -30,6 +30,7 @@ export class EvolutionConnectionService {
 
   async createConnection(session: KavroSession, displayName: string): Promise<EvolutionConnectResult> {
     if (session.role === "member") throw new BadRequestException("Somente administradores podem conectar números");
+    await this.assertWhatsappNumberLimitNotReached(session.organizationId);
     if (!this.evolution.isConfigured()) throw new ServiceUnavailableException("Provedor WhatsApp não configurado");
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) throw new ServiceUnavailableException("Cofre de credenciais não configurado");
     const apiPublicUrl = process.env.KAVRO_API_PUBLIC_URL?.replace(/\/$/, "");
@@ -158,6 +159,34 @@ export class EvolutionConnectionService {
     // à toa. Mantém como "conectando"; o log acima expõe a causa real se
     // isso persistir.
     return "connecting";
+  }
+
+  // Checagem "de UX" antes de gastar QR code/instância à toa — a trava de
+  // verdade fica dentro de complete_evolution_whatsapp_connection
+  // (0042_billing_enforcement.sql), essa aqui só evita o desperdício de
+  // criar a instância na Evolution pra depois ser recusado. Limite nulo
+  // (organization_billing sem linha, ou org nunca vinculada ao Stripe) =
+  // sem limite — é assim que toda org de hoje continua funcionando.
+  private async assertWhatsappNumberLimitNotReached(orgId: string): Promise<void> {
+    const billingResponse = await fetch(
+      `${this.baseUrl()}/rest/v1/organization_billing?org_id=eq.${encodeURIComponent(orgId)}&select=effective_whatsapp_numbers_limit&limit=1`,
+      { headers: this.serviceHeaders(), signal: AbortSignal.timeout(8000) }
+    );
+    if (!billingResponse.ok) return; // sem dado de billing, não bloqueia
+    const billingRows = await billingResponse.json() as Array<{ effective_whatsapp_numbers_limit: number | null }>;
+    const limit = billingRows[0]?.effective_whatsapp_numbers_limit;
+    if (limit === null || limit === undefined) return;
+
+    const countResponse = await fetch(
+      `${this.baseUrl()}/rest/v1/whatsapp_connections?org_id=eq.${encodeURIComponent(orgId)}&select=id`,
+      { headers: { ...this.serviceHeaders(), Prefer: "count=exact" }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!countResponse.ok) return;
+    const contentRange = countResponse.headers.get("content-range");
+    const currentCount = contentRange ? Number(contentRange.split("/")[1]) : 0;
+    if (Number.isFinite(currentCount) && currentCount >= limit) {
+      throw new BadRequestException("Limite de números de WhatsApp do seu plano atingido — adicione mais em Configurações › Planos e cobrança");
+    }
   }
 
   private async selectConnection(orgId: string, connectionId: string): Promise<ConnectionRow | null> {

@@ -392,4 +392,10 @@ button { cursor:pointer; }
 .settings-block-disabled { opacity:.6; }
 .settings-block-disabled .settings-block-icon { filter:grayscale(.4); }
 .settings-section-title { margin:28px 0 14px; font-size:16px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.billing-usage-list { display:grid; gap:8px; }
+.billing-usage-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid #edf0ee; font-size:12px; color:var(--ink); }
+.billing-usage-row:last-child { border-bottom:0; }
+.billing-usage-row span { color:var(--muted); }
+.billing-limit-banner { margin:0 0 16px; padding:12px 16px; border:1px solid #f3d9a8; border-radius:10px; background:#fdf6e8; color:#7a5a12; font-size:12px; line-height:1.5; }
+.billing-limit-banner a { color:#7a5a12; font-weight:750; }
 @media (max-width:640px) { .settings-block summary, .settings-block-summary-static { flex-wrap:wrap; } }

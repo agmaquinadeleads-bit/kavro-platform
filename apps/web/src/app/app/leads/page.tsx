@@ -165,7 +165,9 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     { data: allStagesData },
     { data: originsData },
     { data: pipelineData },
-    { data: membersData }
+    { data: membersData },
+    { count: orgLeadsCount },
+    { data: billingRow }
   ] = await Promise.all([
     countQuery,
     leadsQuery
@@ -192,8 +194,18 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     supabase
       .from("organization_members")
       .select("user_id, user_profiles(full_name)")
-      .eq("org_id", orgId)
+      .eq("org_id", orgId),
+    // Contagem total de leads da org (sem filtro de busca/data/etapa) —
+    // é essa que compara contra o limite do plano, não o totalCount
+    // filtrado acima.
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("org_id", orgId).is("deleted_at", null),
+    supabase.from("organization_billing").select("effective_leads_limit").eq("org_id", orgId).maybeSingle()
   ]);
+
+  // Aviso, não bloqueio — lead que chega sozinho via WhatsApp nunca pode
+  // ser descartado só porque a org passou do limite do plano.
+  const leadsLimit = (billingRow as { effective_leads_limit: number | null } | null)?.effective_leads_limit ?? null;
+  const leadsLimitReached = leadsLimit !== null && (orgLeadsCount ?? 0) >= leadsLimit;
 
   // Etapa inicial "aberta" (nem ganho, nem perdido) do pipeline da org, usada
   // para o cadastro rápido de lead. pipelineId sempre vem de query filtrada
@@ -301,6 +313,12 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           <NewLeadButton pipelineId={pipelineId} firstStageId={firstStageId} />
         </div>
       </div>
+
+      {leadsLimitReached ? (
+        <div className="billing-limit-banner" role="status">
+          Você atingiu o limite de leads do seu plano ({leadsLimit}). Novos leads continuam chegando normalmente — para aumentar o limite, veja <a href="/app/configuracoes">Configurações › Planos e cobrança</a>.
+        </div>
+      ) : null}
 
       {errorMessage ? (
         <div className="feedback error" role="alert">
